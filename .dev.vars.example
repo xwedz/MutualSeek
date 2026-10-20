@@ -1,0 +1,23 @@
+# 複製這個檔案為 .dev.vars，並填入你自己的值。本機開發時（npm run dev）Worker 會讀取這個檔案。
+# .dev.vars 不應該被提交（.gitignore 已經排除它了）。
+# 線上環境不使用這個檔案，改用：npx wrangler secret put <名稱>
+
+# 在 https://osu.ppy.sh/home/account/edit 最下方「OAuth」建立應用程式後取得。
+OSU_CLIENT_ID=your_client_id_here
+OSU_CLIENT_SECRET=your_client_secret_here
+
+# 用來簽章登入 cookie 的密鑰。請填一串夠長的隨機字串，例如：
+#   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+SESSION_SECRET=change_this_to_a_long_random_string
+
+# 用來加密資料庫裡的 osu! token（AES-256-GCM），必須剛好是 32 bytes 的 base64url。
+# 產生方式跟上面一樣（randomBytes(32)）。這把金鑰遺失或更換後，已存的 token 都會失效，使用者需要重新登入。
+TOKEN_ENCRYPTION_KEY=change_this_to_32_random_bytes_base64url
+
+# 線上環境要用另一組全新的 SESSION_SECRET 與 TOKEN_ENCRYPTION_KEY，不要跟本機共用。
+
+# 本機開發專用：前端在 Vite (5173)、API 在 wrangler (3000)，所以要明確指定登入的網址。
+# 這個 Redirect URI 必須已經登記在 osu! OAuth 應用程式的 Callback URL 裡。
+# 線上環境不要設定這兩個（Worker 會自動使用網站自己的網址）。
+OSU_REDIRECT_URI=http://localhost:3000/api/auth/callback
+FRONTEND_URL=http://localhost:5173

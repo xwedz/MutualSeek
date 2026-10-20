@@ -1,0 +1,47 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "osu-mutual-tool",
+    "main": "src/index.ts",
+    "compatibility_date": "2026-10-01",
+
+    // 前端（client/dist）由 Cloudflare 直接提供，靜態檔案免費且不計入請求額度。
+    // 只有 /api/* 會執行 Worker；其他路徑找不到檔案時回傳 index.html（單頁應用程式）。
+    "assets": {
+        "directory": "./client/dist",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": ["/api/*"]
+    },
+
+    "d1_databases": [
+        {
+            "binding": "DB",
+            "database_name": "osu-mutual-tool",
+            // 執行 `npx wrangler d1 create osu-mutual-tool` 後，把它印出的 database_id 填在這裡。
+            // 本機開發（--local）不會用到這個值，所以先留著佔位也能跑。
+            "database_id": "00000000-0000-0000-0000-000000000000",
+            "migrations_dir": "migrations"
+        }
+    ],
+
+    // 每個 IP 的頻率限制，擋單一來源猛刷 API。period 只能是 10 或 60 秒。
+    "ratelimits": [
+        {
+            "name": "API_LIMITER",
+            "namespace_id": "1001",
+            "simple": { "limit": 60, "period": 60 }
+        }
+    ],
+
+    // 背景掃描：每分鐘跑一次，每次只做一小批（見 src/crawler.ts 的說明）。
+    "triggers": { "crons": ["* * * * *"] },
+
+    "vars": {
+        // 第一版只掃台灣、osu! 標準模式。之後要擴大範圍改這裡就好。
+        "SCAN_COUNTRY": "TW",
+        "SCAN_MODE": "osu"
+    }
+
+    // 機密值不要寫在這裡：
+    //   本機：放在 .dev.vars（已加入 .gitignore），格式見 .dev.vars.example
+    //   線上：npx wrangler secret put OSU_CLIENT_ID（其他機密值同理）
+}

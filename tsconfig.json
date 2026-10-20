@@ -1,0 +1,17 @@
+{
+    // 後端（Worker）用的 TypeScript 設定；前端在 client/ 有自己的一份。
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        // Workers 不是瀏覽器：不載入 DOM 型別，改用 worker-configuration.d.ts（npm run cf-typegen 產生）
+        "lib": ["ES2022"],
+        "types": [],
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "isolatedModules": true,
+        "skipLibCheck": true,
+        "noEmit": true
+    },
+    "include": ["src/**/*.ts", "worker-configuration.d.ts"]
+}

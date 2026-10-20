@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Secrets (never commit)
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+# 範例檔不含真正的機密值，要提交，讓別人知道需要設定哪些變數
+!.dev.vars.example
+
+# Cloudflare / Wrangler local state
+.wrangler/
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/

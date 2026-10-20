@@ -1,0 +1,26 @@
+{
+  "name": "osu-mutual-tool",
+  "version": "0.1.0",
+  "description": "Find osu! players looking for mutuals and track who followed you back (Cloudflare Workers + D1)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 3000 --test-scheduled",
+    "client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "deploy": "npm run build && wrangler deploy",
+    "typecheck": "tsc --noEmit && npm --prefix client run typecheck",
+    "test": "vitest run",
+    "cf-typegen": "wrangler types --include-env=false",
+    "db:migrate": "wrangler d1 migrations apply osu-mutual-tool --local",
+    "db:migrate:remote": "wrangler d1 migrations apply osu-mutual-tool --remote"
+  },
+  "dependencies": {
+    "hono": "^4.13.13"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.151.2"
+  }
+}

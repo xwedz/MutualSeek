@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+/* ---------- 設計 token：顏色、字型、動畫 ---------- */
+@theme {
+    --color-bg: #0e0b12;
+    --color-surface: #17121d;
+    --color-surface-2: #201929;
+    --color-line: #2e2538;
+    --color-pink: #ff66aa;
+    --color-pink-2: #ff3d8b;
+    --color-ink: #f4eef7;
+    --color-muted: #9d90a8;
+    --color-good: #5be39a;
+    --color-warn: #ffb547;
+    --color-bad: #ff5a6e;
+
+    --font-sans: 'Outfit', system-ui, sans-serif;
+
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* 進場用 backwards：等待 delay 時就先套用起始狀態（透明），結束後不鎖住 transform。
+       退場用 forwards：淡出後維持透明，直到元素被移除。 */
+    --animate-fade-in: fade-in 0.35s ease-out backwards;
+    --animate-fade-up: fade-up 0.45s var(--ease-out-expo) backwards;
+    --animate-fade-out: fade-out-up 0.25s ease-in forwards;
+    --animate-spin-slow: spin 0.9s linear infinite;
+
+    @keyframes fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    @keyframes fade-up {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: none; }
+    }
+    @keyframes fade-out-up {
+        from { opacity: 1; transform: none; }
+        to { opacity: 0; transform: translateY(-6px); }
+    }
+}
+
+/* ---------- 減少動態 ----------
+   系統開啟「減少動畫」時：所有位移改成單純淡入淡出，時間照常（不用 0.01ms 那種寫法，
+   否則無限循環的動畫會變成每秒閃爍上百次）。
+   旋轉的讀取圖示改成緩慢的透明度呼吸，同樣是無限循環但很柔和。 */
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --animate-fade-up: fade-in 0.45s ease-out backwards;
+        --animate-fade-out: fade-out 0.25s ease-in forwards;
+        --animate-spin-slow: breathe 1.6s ease-in-out infinite;
+    }
+    @keyframes fade-out {
+        from { opacity: 1; }
+        to { opacity: 0; }
+    }
+    @keyframes breathe {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.35; }
+    }
+    /* 卡片 hover 時的上浮改成不動，只保留顏色變化 */
+    .lift:hover { transform: none !important; }
+}
+
+html {
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+}
+
+body {
+    min-height: 100dvh;
+    margin: 0;
+    background:
+        radial-gradient(60rem 30rem at 50% -10rem, rgb(255 102 170 / 0.09), transparent 70%),
+        var(--color-bg);
+}
+
+::selection {
+    background: rgb(255 102 170 / 0.35);
+}
+
+/* 鍵盤操作時才顯示的焦點框 */
+:focus-visible {
+    outline: 2px solid var(--color-pink);
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+}
