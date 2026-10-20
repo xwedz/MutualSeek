@@ -17,7 +17,7 @@
 // 寫入資料庫時，整批資料打包成「一個 JSON 參數」，在 SQL 裡用 json_each 展開。
 // 這樣不管幾筆都只算一個查詢，也不會碰到「每個查詢最多 100 個參數」的限制。
 
-import { detectMutualIntent, type MutualLevel } from './detect';
+import { detectMutualMention } from './detect';
 import type { Env } from './env';
 import { apiGet, getAppToken, OsuApiError, parseTime, type OsuUser, type RankingResponse } from './osu';
 
@@ -42,8 +42,7 @@ interface CrawlerState {
 export interface CrawlerStats {
     players: number;
     scanned: number;
-    strong: number;
-    weak: number;
+    mentioned: number;
     updatedAt: number;
 }
 
@@ -64,7 +63,11 @@ interface ScanRow {
     followerCount: number | null;
     lastVisit: number | null;
     pmFriendsOnly: boolean | null;
-    level: MutualLevel;
+    // players 表沿用 0001_init.sql 的欄位（已套用的 migration 不修改），內容的意義改成：
+    //   mutual_level   'mention'（有提到 mutual）或 'none'
+    //   mutual_score   關鍵字出現的次數
+    //   mutual_snippet 摘錄（Snippet[] 的 JSON），見 detect.ts
+    level: 'mention' | 'none';
     score: number;
     snippet: string | null;
 }
@@ -180,15 +183,15 @@ export async function runCrawler(env: Env): Promise<string> {
             try {
                 await throttle();
                 const user = await apiGet<OsuUser>(`/users/${id}/${env.SCAN_MODE}?key=id`, token);
-                const detection = detectMutualIntent(user.page?.raw ?? '');
+                const detection = detectMutualMention(user.page?.raw ?? '');
                 scanRows.push({
                     id,
                     followerCount: user.follower_count ?? null,
                     lastVisit: parseTime(user.last_visit),
                     pmFriendsOnly: user.pm_friends_only,
-                    level: detection.level,
-                    score: detection.score,
-                    snippet: detection.snippet,
+                    level: detection.mentioned ? 'mention' : 'none',
+                    score: detection.count,
+                    snippet: detection.mentioned ? JSON.stringify(detection.snippets) : null,
                 });
             } catch (err) {
                 if (err instanceof OsuApiError && err.status === 404) {
@@ -228,8 +231,7 @@ export async function runCrawler(env: Env): Promise<string> {
             .prepare(
                 `SELECT COUNT(*) AS players,
                         COUNT(scanned_at) AS scanned,
-                        COALESCE(SUM(mutual_level = 'strong'), 0) AS strong,
-                        COALESCE(SUM(mutual_level = 'weak'), 0) AS weak
+                        COALESCE(SUM(mutual_level = 'mention'), 0) AS mentioned
                  FROM players`,
             )
             .first<Omit<CrawlerStats, 'updatedAt'>>();

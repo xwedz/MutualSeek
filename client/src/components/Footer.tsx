@@ -20,7 +20,7 @@ export function Footer() {
                 <p className="animate-fade-in">
                     Scanning active players in the {stats.country} {MODE_NAMES[stats.mode] ?? stats.mode} ranking
                     {s
-                        ? `: ${formatNumber(s.scanned)} of ${formatNumber(s.players)} profiles checked, ${formatNumber(s.strong)} clearly looking for mutuals.`
+                        ? `: ${formatNumber(s.scanned)} of ${formatNumber(s.players)} profiles checked, ${formatNumber(s.mentioned ?? 0)} mention mutuals.`
                         : '. The first results will show up within a few minutes.'}
                 </p>
             )}

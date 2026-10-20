@@ -16,7 +16,11 @@ export interface MeResponse {
     account?: AccountInfo;
 }
 
-export type MutualLevel = 'weak' | 'strong';
+/** 摘錄的一小段文字；hit = true 的部分是命中的關鍵字（對照 src/detect.ts） */
+export interface SnippetPart {
+    text: string;
+    hit: boolean;
+}
 
 export interface Candidate {
     id: number;
@@ -28,10 +32,7 @@ export interface Candidate {
     last_visit: number | null;
     pm_friends_only: number;
     follower_count: number | null;
-    mutual_level: MutualLevel;
-    mutual_score: number;
-    mutual_snippet: string | null;
-    scanned_at: number;
+    snippets: SnippetPart[][];
 }
 
 export interface CandidatesResponse {
@@ -78,5 +79,5 @@ export interface StatsResponse {
     country: string;
     mode: string;
     rankingNextPage: number | null;
-    stats: { players: number; scanned: number; strong: number; weak: number; updatedAt: number } | null;
+    stats: { players: number; scanned: number; mentioned: number; updatedAt: number } | null;
 }

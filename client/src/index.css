@@ -23,6 +23,7 @@
     --animate-fade-in: fade-in 0.35s ease-out backwards;
     --animate-fade-up: fade-up 0.45s var(--ease-out-expo) backwards;
     --animate-fade-out: fade-out-up 0.25s ease-in forwards;
+    --animate-fade-away: fade-away 0.2s ease-in forwards; /* 只淡出、不位移（視窗背後的遮罩用） */
     --animate-spin-slow: spin 0.9s linear infinite;
 
     @keyframes fade-in {
@@ -32,6 +33,10 @@
     @keyframes fade-up {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: none; }
+    }
+    @keyframes fade-away {
+        from { opacity: 1; }
+        to { opacity: 0; }
     }
     @keyframes fade-out-up {
         from { opacity: 1; transform: none; }

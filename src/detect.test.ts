@@ -1,8 +1,11 @@
 // 自動化測試：用 Vitest 執行（npm test）。
-// 每個 it(...) 是一個情境，expect(...) 寫下「應該得到什麼」。改了規則後跑一次，就知道有沒有把原本對的弄壞。
+// 每個 it(...) 是一個情境，expect(...) 寫下「應該得到什麼」。改了關鍵字後跑一次，就知道有沒有把原本對的弄壞。
 
 import { describe, expect, it } from 'vitest';
-import { bbcodeToText, detectMutualIntent } from './detect';
+import { bbcodeToText, detectMutualMention, type Snippet } from './detect';
+
+/** 把摘錄還原成純文字，關鍵字用 [] 框起來，方便寫測試 */
+const render = (snippet: Snippet) => snippet.map(p => (p.hit ? `[${p.text}]` : p.text)).join('');
 
 describe('bbcodeToText', () => {
     it('removes tags but keeps their text', () => {
@@ -20,76 +23,66 @@ describe('bbcodeToText', () => {
     });
 });
 
-describe('detectMutualIntent', () => {
+describe('detectMutualMention', () => {
     it.each([
         'Looking for mutuals!',
-        'add me for mutual :)',
         'I always add back',
-        'mutuals are always welcome',
         'f4f',
-        'DM me if you added me',
-        'dm for mutual',
-        'pm me for mutuals',
-        'feel free to ask for mutual',
-        'feel free to dm for mutual',
-        'just ask me for mutuals',
-        "don't forget to follow back!",
+        'follow for follow',
+        'followback',
         '歡迎互關～',
+        '互粉嗎',
         '相互フォロー歓迎です',
+        'フォロバします',
         '맞팔 환영',
-    ])('marks "%s" as strong', text => {
-        expect(detectMutualIntent(text).level).toBe('strong');
+    ])('finds a mention in "%s"', text => {
+        expect(detectMutualMention(text).mentioned).toBe(true);
     });
 
-    it.each(['thanks to all my mutuals', 'feel free to add me', "don't hesitate to add me"])('marks "%s" as weak', text => {
-        expect(detectMutualIntent(text).level).toBe('weak');
+    it('also finds people who say no: the user reads the snippet and decides', () => {
+        // 工具不判斷語意。"no mutuals" 的人也會列出來，但摘錄會清楚顯示他們寫了什麼
+        const result = detectMutualMention('no mutuals please');
+        expect(result.mentioned).toBe(true);
+        expect(render(result.snippets[0]!)).toBe('no [mutuals] please');
     });
 
     it.each([
-        'no mutuals please',
-        'not looking for mutuals',
-        "I don't add back, sorry",
-        "please don't add me",
-        'mutuals closed',
-        // 否定詞與動詞中間夾了字
-        "I'm not really looking for mutuals",
-        'not currently accepting new mutuals',
-        "I don't usually add back",
-        'no more new mutuals, sorry',
-        '不互關 謝謝',
-        '相互はしません',
-    ])('marks "%s" as negative', text => {
-        expect(detectMutualIntent(text).level).toBe('negative');
-    });
-
-    it('lets a negative rule win over positive ones', () => {
-        // 同時有「add me」與「no mutuals」：寧可漏掉，也不要推薦明說不要的人
-        expect(detectMutualIntent('add me on discord! no mutuals though').level).toBe('negative');
-    });
-
-    it('counts the same piece of text only once', () => {
-        // "add me" 和 "mutual" 都在 "add me for mutual" 裡面，不能再各加一次分
-        expect(detectMutualIntent('add me for mutual').score).toBe(3);
-        expect(detectMutualIntent('mutual mutual mutual').score).toBe(1);
-    });
-
-    it('still counts a weaker rule when it appears elsewhere in the text', () => {
-        // 第二個 "add me" 在別的位置，是獨立的訊號：3 + 2
-        expect(detectMutualIntent('add me for mutual! or just add me on discord').score).toBe(5);
-    });
-
-    it('ignores pages without any signal', () => {
-        expect(detectMutualIntent('I play osu! since 2015. Favorite mapper: Sotarks').level).toBe('none');
-        expect(detectMutualIntent('').level).toBe('none');
+        'I play osu! since 2015. Favorite mapper: Sotarks',
+        'add me on discord',
+        'follow me on twitch',
+        'mutually exclusive', // \b 避免比對到單字的一部分
+        '',
+    ])('finds nothing in "%s"', text => {
+        expect(detectMutualMention(text).mentioned).toBe(false);
     });
 
     it('does not match "mutual" hidden inside an image', () => {
-        expect(detectMutualIntent('[img]https://example.com/looking-for-mutuals.png[/img]').level).toBe('none');
+        expect(detectMutualMention('[img]https://example.com/looking-for-mutuals.png[/img]').mentioned).toBe(false);
     });
 
-    it('returns a snippet around the strongest match', () => {
-        const result = detectMutualIntent('Hi, I am a mania player. Looking for mutuals, DM me anytime.');
-        expect(result.snippet).toContain('Looking for mutuals');
-        expect(result.labels).toContain('looking for mutuals');
+    it('marks every keyword inside the snippet', () => {
+        const result = detectMutualMention('Looking for mutuals, I always add back!');
+        expect(result.count).toBe(2);
+        expect(result.snippets).toHaveLength(1); // 兩個關鍵字很近，合成同一段
+        expect(render(result.snippets[0]!)).toBe('Looking for [mutuals], I always [add back]!');
+    });
+
+    it('adds ellipses when the snippet is cut from a longer page', () => {
+        const filler = 'x'.repeat(100);
+        const snippet = render(detectMutualMention(`${filler} mutuals welcome ${filler}`).snippets[0]!);
+        expect(snippet.startsWith('…')).toBe(true);
+        expect(snippet.endsWith('…')).toBe(true);
+        expect(snippet).toContain('[mutuals] welcome');
+    });
+
+    it('keeps at most two separate snippets', () => {
+        const filler = ' lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt '.repeat(3);
+        const result = detectMutualMention(`mutual${filler}f4f${filler}互關${filler}맞팔`);
+        expect(result.count).toBe(4);
+        expect(result.snippets).toHaveLength(2);
+    });
+
+    it('prefers the longer Japanese keyword', () => {
+        expect(render(detectMutualMention('相互フォロー歓迎').snippets[0]!)).toBe('[相互フォロー]歓迎');
     });
 });

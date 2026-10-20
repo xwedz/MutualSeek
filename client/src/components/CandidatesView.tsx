@@ -1,21 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchCandidates } from '../api';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { fetchCandidates, profileUrl } from '../api';
 import type { Candidate } from '../types';
 import { useLocalStorage } from '../useLocalStorage';
 import { CandidateCard } from './CandidateCard';
-import { ChevronIcon, PencilIcon, Spinner } from './Icons';
-import { Segmented } from './Segmented';
+import { ChevronIcon, InfoIcon, PencilIcon, Spinner } from './Icons';
+import { ReadFirstDialog } from './ReadFirstDialog';
 
 const DEFAULT_TEMPLATE = "Hi {name}! Saw on your profile that you're open to mutuals, just added you :)";
 const LEAVE_MS = 250; // 跟 index.css 的 fade-out 時間一致
 const COPIED_MS = 1600;
 
-type Level = 'strong' | 'any';
-
 export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
-    const [level, setLevel] = useLocalStorage<Level>('filter.level', 'strong');
     const [template, setTemplate] = useLocalStorage('dm.template', DEFAULT_TEMPLATE);
     const [skipped, setSkipped] = useLocalStorage<number[]>('skipped', []);
+    // 使用者是否已經看過「請先讀對方寫了什麼」的說明視窗
+    const [readFirstSeen, setReadFirstSeen] = useLocalStorage('notice.readFirst', false);
+    const [dialogFor, setDialogFor] = useState<Candidate | null>(null);
 
     const [candidates, setCandidates] = useState<Candidate[]>([]);
     const [hasMore, setHasMore] = useState(false);
@@ -25,27 +25,24 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
     const [copiedId, setCopiedId] = useState<number | null>(null);
     const [editingTemplate, setEditingTemplate] = useState(false);
     const copiedTimer = useRef<number | undefined>(undefined);
-    // 篩選條件快速切換時，只採用最後一次請求的結果，避免舊結果晚到蓋掉新結果
+    // 只採用最後一次請求的結果，避免舊結果晚到蓋掉新結果（例如快速連按「Load more」）
     const requestId = useRef(0);
 
-    const load = useCallback(
-        async (offset: number) => {
-            const id = ++requestId.current;
-            setLoading(true);
-            setError(null);
-            try {
-                const data = await fetchCandidates({ level, offset });
-                if (id !== requestId.current) return;
-                setCandidates(prev => (offset === 0 ? data.candidates : [...prev, ...data.candidates]));
-                setHasMore(data.hasMore);
-            } catch (err) {
-                if (id === requestId.current) setError(err instanceof Error ? err.message : 'Could not load players.');
-            } finally {
-                if (id === requestId.current) setLoading(false);
-            }
-        },
-        [level],
-    );
+    const load = useCallback(async (offset: number) => {
+        const id = ++requestId.current;
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await fetchCandidates(offset);
+            if (id !== requestId.current) return;
+            setCandidates(prev => (offset === 0 ? data.candidates : [...prev, ...data.candidates]));
+            setHasMore(data.hasMore);
+        } catch (err) {
+            if (id === requestId.current) setError(err instanceof Error ? err.message : 'Could not load players.');
+        } finally {
+            if (id === requestId.current) setLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
         load(0);
@@ -62,6 +59,13 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
         }, LEAVE_MS);
     }
 
+    // 第一次開個人頁面時，先攔下連結、顯示說明視窗；看過之後就讓連結照常開新分頁
+    function open(event: MouseEvent<HTMLAnchorElement>, candidate: Candidate) {
+        if (readFirstSeen) return;
+        event.preventDefault();
+        setDialogFor(candidate);
+    }
+
     async function copy(candidate: Candidate) {
         try {
             await navigator.clipboard.writeText(template.replaceAll('{name}', candidate.username));
@@ -75,16 +79,16 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
 
     return (
         <section>
-            <div className="flex flex-wrap items-center gap-3">
-                <Segmented<Level>
-                    label="Signal strength"
-                    value={level}
-                    onChange={setLevel}
-                    options={[
-                        { value: 'strong', label: 'Clearly looking' },
-                        { value: 'any', label: 'Include maybes' },
-                    ]}
-                />
+            {/* 固定的提醒：工具只找「有提到」mutual 的人，想不想要由使用者讀了再判斷 */}
+            <p className="flex items-start gap-2.5 rounded-xl border border-pink/25 bg-pink/5 px-4 py-3 text-sm text-ink/90">
+                <InfoIcon size={16} className="mt-0.5 shrink-0 text-pink" />
+                <span>
+                    These players <span className="font-semibold">mention</span> mutuals on their profile. Read what they wrote before
+                    adding them: some mention mutuals only to say no.
+                </span>
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
                 <button
                     type="button"
                     onClick={() => setEditingTemplate(v => !v)}
@@ -153,6 +157,7 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
                         index={i}
                         leaving={leaving.includes(c.id)}
                         copied={copiedId === c.id}
+                        onOpen={e => open(e, c)}
                         onCopy={() => copy(c)}
                         onSkip={() => skip(c.id)}
                     />
@@ -167,9 +172,20 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
 
             {!loading && !error && visible.length === 0 && (
                 <p className="mt-6 animate-fade-in rounded-2xl border border-dashed border-line px-4 py-10 text-center text-muted">
-                    No one matches these filters yet. The scanner checks a few players every minute, so check back later or try
-                    "Include maybes".
+                    No one to show yet. The scanner checks a few players every minute, so check back later.
                 </p>
+            )}
+
+            {dialogFor && (
+                <ReadFirstDialog
+                    username={dialogFor.username}
+                    onConfirm={() => {
+                        setReadFirstSeen(true);
+                        // 在點擊當下開分頁；noopener 讓新分頁拿不到這個頁面的 window 物件
+                        window.open(profileUrl(dialogFor.id), '_blank', 'noopener,noreferrer');
+                    }}
+                    onClose={() => setDialogFor(null)}
+                />
             )}
 
             {!loading && hasMore && (

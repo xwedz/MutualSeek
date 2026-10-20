@@ -120,7 +120,15 @@ export const PencilIcon = (p: IconProps) => (
     </Icon>
 );
 
-export const Spinner = ({ size = 16 }: { size?: number }) => (
+export const InfoIcon = (p: IconProps) => (
+    <Icon {...p}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 11v5" />
+        <path d="M12 8h.01" />
+    </Icon>
+);
+
+export const Spinner =({ size = 16 }: { size?: number }) => (
     <Icon size={size} className="animate-spin-slow">
         <path d="M12 3a9 9 0 1 0 9 9" />
     </Icon>

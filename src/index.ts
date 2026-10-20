@@ -6,6 +6,7 @@
 import { Hono, type Context } from 'hono';
 import auth from './auth';
 import { getCrawlerProgress, runCrawler } from './crawler';
+import type { Snippet } from './detect';
 import type { AppEnv, Env } from './env';
 import { syncFriends, type FriendRow } from './friends';
 import { getSessionUser, type SessionUser } from './session';
@@ -54,34 +55,48 @@ app.get('/api/me', async c => {
 });
 
 /**
- * 候選人列表：背景掃描判定為在找 mutual 的玩家。
+ * 候選人列表：個人頁面有提到 mutual 的玩家（是否真的想要 mutual，由使用者讀摘錄後自己判斷）。
  * players 表裡只有活躍的玩家（見 crawler.ts），所以這裡不用再篩選最後上線時間。
  * 登入後會排除「已經在你好友名單裡」的人（以最近一次同步為準）與你自己。
- *   level=strong（預設）只看明確在找的；level=any 連「有提到 mutual」的也列出
- * 排序：分數高的優先；同分時最近上線的優先（隱藏上線狀態的人排在同分的最後）。
+ * 排序：最近上線的優先（SQLite 的 DESC 會把 null 排在最後，也就是隱藏上線狀態的人）。
  */
 app.get('/api/candidates', async c => {
     const user = await getSessionUser(c);
-    const level = c.req.query('level') === 'any' ? 'any' : 'strong';
     const offset = Math.max(Number(c.req.query('offset')) || 0, 0);
 
     const { results } = await c.env.DB.prepare(
         `SELECT p.id, p.username, p.avatar_url, p.global_rank, p.country_rank, p.pp, p.last_visit,
-                p.pm_friends_only, p.follower_count, p.mutual_level, p.mutual_score, p.mutual_snippet, p.scanned_at
+                p.pm_friends_only, p.follower_count, p.mutual_snippet
          FROM players AS p
          LEFT JOIN friendships AS f ON f.account_id = ?1 AND f.target_id = p.id
-         WHERE p.mutual_level IN ('strong', ?2)
+         WHERE p.mutual_level = 'mention'
            AND f.target_id IS NULL
            AND p.id != ?1
-         ORDER BY p.mutual_score DESC, p.last_visit DESC
-         LIMIT ?3 OFFSET ?4`,
+         ORDER BY p.last_visit DESC
+         LIMIT ?2 OFFSET ?3`,
     )
-        .bind(user?.osuUserId ?? 0, level === 'any' ? 'weak' : 'strong', PAGE_SIZE + 1, offset)
-        .all();
+        .bind(user?.osuUserId ?? 0, PAGE_SIZE + 1, offset)
+        .all<Record<string, unknown> & { mutual_snippet: string | null }>();
 
     // 多查一筆：查得到第 PAGE_SIZE + 1 筆，就代表還有下一頁
-    return c.json({ candidates: results.slice(0, PAGE_SIZE), hasMore: results.length > PAGE_SIZE });
+    const candidates = results.slice(0, PAGE_SIZE).map(({ mutual_snippet, ...row }) => ({
+        ...row,
+        snippets: parseSnippets(mutual_snippet),
+    }));
+    return c.json({ candidates, hasMore: results.length > PAGE_SIZE });
 });
+
+/** 資料庫裡的摘錄是 JSON；萬一格式不對（例如舊版存的純文字），就當成一段沒有標記的文字。 */
+function parseSnippets(value: string | null): Snippet[] {
+    if (!value) return [];
+    try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed as Snippet[];
+    } catch {
+        // 不是 JSON：落到下面的處理
+    }
+    return [[{ text: value, hit: false }]];
+}
 
 async function friendsResponse(c: Context<AppEnv>, user: SessionUser, account: AccountRow) {
     const [friends, events] = await c.env.DB.batch([

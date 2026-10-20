@@ -1,3 +1,4 @@
+import type { MouseEvent } from 'react';
 import { profileUrl } from '../api';
 import { formatNumber, timeAgo } from '../format';
 import type { Candidate } from '../types';
@@ -9,13 +10,13 @@ interface Props {
     index: number;
     leaving: boolean;
     copied: boolean;
+    /** 點擊「Open profile」或名字時呼叫；父元件可以 preventDefault 改成先顯示說明視窗 */
+    onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
     onCopy: () => void;
     onSkip: () => void;
 }
 
-export function CandidateCard({ candidate: c, index, leaving, copied, onCopy, onSkip }: Props) {
-    const strong = c.mutual_level === 'strong';
-
+export function CandidateCard({ candidate: c, index, leaving, copied, onOpen, onCopy, onSkip }: Props) {
     return (
         <li
             // 進場依序錯開（最多錯開 8 張，避免往下捲時等太久）；按「略過」時淡出後才從列表移除
@@ -27,24 +28,15 @@ export function CandidateCard({ candidate: c, index, leaving, copied, onCopy, on
             <div className="flex items-start gap-3">
                 <Avatar url={c.avatar_url} name={c.username} />
                 <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <a
-                            href={profileUrl(c.id)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="truncate text-lg font-semibold text-ink transition-colors hover:text-pink"
-                        >
-                            {c.username}
-                        </a>
-                        <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                strong ? 'bg-pink/15 text-pink' : 'bg-surface-2 text-muted'
-                            }`}
-                            title={strong ? 'Their profile clearly asks for mutuals' : 'Their profile mentions mutuals'}
-                        >
-                            {strong ? 'Looking for mutuals' : 'Mentions mutuals'}
-                        </span>
-                    </div>
+                    <a
+                        href={profileUrl(c.id)}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={onOpen}
+                        className="truncate text-lg font-semibold text-ink transition-colors hover:text-pink"
+                    >
+                        {c.username}
+                    </a>
                     <p className="mt-0.5 flex flex-wrap gap-x-3 text-sm text-muted">
                         {c.country_rank !== null && <span>#{formatNumber(c.country_rank)} in country</span>}
                         <span>{formatNumber(c.pp)}pp</span>
@@ -61,17 +53,30 @@ export function CandidateCard({ candidate: c, index, leaving, copied, onCopy, on
                 </div>
             </div>
 
-            {c.mutual_snippet && (
-                <blockquote className="mt-3 rounded-xl border-l-2 border-pink/50 bg-surface-2/60 px-3 py-2 text-sm break-words text-ink/85">
-                    {c.mutual_snippet}
+            {/* 對方個人頁面裡提到 mutual 的段落，關鍵字標成粉色：讓使用者在卡片上就能讀到對方怎麼寫 */}
+            {c.snippets.map((snippet, i) => (
+                <blockquote
+                    key={i}
+                    className="mt-3 rounded-xl border-l-2 border-pink/50 bg-surface-2/60 px-3 py-2 text-sm break-words text-ink/85"
+                >
+                    {snippet.map((part, j) =>
+                        part.hit ? (
+                            <mark key={j} className="rounded bg-pink/15 px-0.5 font-semibold text-pink">
+                                {part.text}
+                            </mark>
+                        ) : (
+                            <span key={j}>{part.text}</span>
+                        ),
+                    )}
                 </blockquote>
-            )}
+            ))}
 
             <div className="mt-3 flex flex-wrap gap-2">
                 <a
                     href={profileUrl(c.id)}
                     target="_blank"
                     rel="noreferrer"
+                    onClick={onOpen}
                     className="inline-flex items-center gap-1.5 rounded-xl bg-pink px-3.5 py-2 text-sm font-semibold text-bg transition-colors hover:bg-pink-2"
                 >
                     Open profile
