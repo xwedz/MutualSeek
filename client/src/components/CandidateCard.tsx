@@ -49,7 +49,8 @@ export function CandidateCard({ candidate: c, index, leaving, copied, onCopy, on
                         {c.country_rank !== null && <span>#{formatNumber(c.country_rank)} in country</span>}
                         <span>{formatNumber(c.pp)}pp</span>
                         {c.follower_count !== null && <span>{formatNumber(c.follower_count)} followers</span>}
-                        <span>seen {timeAgo(c.last_visit)}</span>
+                        {/* 候選人一定是 30 天內上線過的人；隱藏上線狀態的人看不到確切時間，只能說「這個月有上線」 */}
+                        <span>{c.last_visit === null ? 'active this month' : `seen ${timeAgo(c.last_visit)}`}</span>
                     </p>
                     {c.pm_friends_only === 1 && (
                         <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-warn">
@@ -84,13 +85,16 @@ export function CandidateCard({ candidate: c, index, leaving, copied, onCopy, on
                     {/* 圖示與文字一起淡入切換，不要突然跳字 */}
                     <span key={copied ? 'copied' : 'copy'} className="inline-flex animate-fade-in items-center gap-1.5">
                         {copied ? <CheckIcon size={14} className="text-good" /> : <CopyIcon size={14} />}
-                        {copied ? (
-                            'Copied'
-                        ) : (
-                            <>
-                                Copy<span className="hidden sm:inline"> message</span>
-                            </>
-                        )}
+                        {/* 文字包在同一個 span 裡：不然外層 flex 的間距會加在 "Copy" 和 " message" 之間，變成兩倍寬的空白 */}
+                        <span>
+                            {copied ? (
+                                'Copied'
+                            ) : (
+                                <>
+                                    Copy<span className="hidden sm:inline"> message</span>
+                                </>
+                            )}
+                        </span>
                     </span>
                 </button>
                 {/* 手機上只顯示圖示，三顆按鈕才排得進同一行 */}

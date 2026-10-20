@@ -18,7 +18,7 @@ export function Footer() {
         <footer className="mt-16 border-t border-line pt-6 pb-10 text-sm text-muted">
             {stats && (
                 <p className="animate-fade-in">
-                    Scanning the top players of {stats.country} in {MODE_NAMES[stats.mode] ?? stats.mode}
+                    Scanning active players in the {stats.country} {MODE_NAMES[stats.mode] ?? stats.mode} ranking
                     {s
                         ? `: ${formatNumber(s.scanned)} of ${formatNumber(s.players)} profiles checked, ${formatNumber(s.strong)} clearly looking for mutuals.`
                         : '. The first results will show up within a few minutes.'}

@@ -5,6 +5,8 @@
 // 做法是「規則加權」：
 //   - 每條正面規則有權重，命中的規則權重加總成分數。
 //     分數 >= 3 視為 strong（明確在找），1–2 視為 weak（有提到 mutual 但不確定）。
+//   - 同一段文字只能被計分一次：權重高的規則先比對，之後的規則若命中位置跟已計分的段落重疊就不算。
+//     例如 "add me for mutual" 只算「add me for mutual」3 分，裡面的 "add me"、"mutual" 不再重複加分。
 //   - 只要命中任何一條負面規則（例如 "no mutuals"、「不回關」），直接判定 negative，不列入候選人。
 //     這是為了避免最糟的情況：把明說不要的人推薦給使用者。
 //
@@ -34,8 +36,8 @@ const POSITIVE: Rule[] = [
         weight: 3,
     },
     { label: 'add me for mutual', pattern: /\b(?:add|friend|follow)\s+(?:me\s+)?(?:for|4)\s+(?:a\s+)?mutuals?\b/i, weight: 3 },
-    // 實際掃描時發現的寫法："dm for mutual"、"pm me for mutuals"
-    { label: 'dm for mutual', pattern: /\b(?:dm|pm|message|msg)\s+(?:me\s+)?(?:for|4)\s+(?:a\s+)?mutuals?\b/i, weight: 3 },
+    // 實際掃描時發現的寫法："dm for mutual"、"pm me for mutuals"、"feel free to ask for mutual"
+    { label: 'dm for mutual', pattern: /\b(?:dm|pm|message|msg|ask)\s+(?:me\s+)?(?:for|4)\s+(?:a\s+)?mutuals?\b/i, weight: 3 },
     { label: 'mutuals welcome', pattern: /\bmutuals?\s+(?:are\s+|is\s+)?(?:always\s+)?(?:welcome|accepted|open|ok|okay|appreciated)\b/i, weight: 3 },
     {
         label: 'adds back',
@@ -62,19 +64,38 @@ const POSITIVE: Rule[] = [
     { label: '맞팔', pattern: /맞팔/, weight: 3 },
 ];
 
+// 計分用的版本：依權重由高到低排序（權重相同時維持原本順序），
+// 並加上 g 旗標，matchAll 才能逐一找出文字中的每個命中位置。
+const POSITIVE_BY_WEIGHT: Rule[] = [...POSITIVE]
+    .sort((a, b) => b.weight - a.weight)
+    .map(rule => ({ ...rule, pattern: new RegExp(rule.pattern.source, `${rule.pattern.flags}g`) }));
+
+// 否定詞和動詞之間允許夾 0–2 個字，例如 "not really looking for"、"don't usually add back"。
+// 但夾的字不能是 forget / hesitate："don't forget to follow back" 字面有 don't，意思卻是正面的。
+const FILLER = String.raw`(?:(?!forget|hesitate)[a-z']+\s+){0,2}?`;
+
 const NEGATIVE: Rule[] = [
+    { label: 'no mutuals', pattern: /\bno\s+(?:(?:any|more|new)\s+){0,2}mutuals?\b/i, weight: 0 },
     {
-        label: 'no mutuals',
-        pattern: /\b(?:no|not (?:looking for|accepting|doing|interested in)|don'?t (?:want|do|need)|stop asking (?:for|about))\s+(?:any\s+|more\s+|new\s+)?mutuals?\b/i,
+        label: 'not looking for mutuals',
+        pattern: new RegExp(
+            String.raw`\b(?:not|don'?t|do not|doesn'?t|never)\s+${FILLER}(?:looking for|accepting|doing|interested in|want(?:ing)?|need|taking|adding)\s+(?:(?:any|more|new)\s+){0,2}mutuals?\b`,
+            'i',
+        ),
         weight: 0,
     },
+    { label: 'stop asking for mutuals', pattern: /\bstop asking (?:for|about)\s+(?:any\s+)?mutuals?\b/i, weight: 0 },
     { label: 'mutuals closed', pattern: /\bmutuals?\s+(?:are\s+)?(?:closed|full)\b/i, weight: 0 },
     { label: 'no f4f', pattern: /\bno\s+(?:f4f|follow\s?4\s?follow|follow for follow)\b/i, weight: 0 },
     {
         label: "doesn't add back",
-        pattern: /\b(?:don'?t|do not|won'?t|will not|never|rarely)\s+(?:add|follow|friend)\s+(?:you\s+|u\s+|people\s+|anyone\s+)?back\b/i,
+        pattern: new RegExp(
+            String.raw`\b(?:don'?t|do not|doesn'?t|won'?t|will not|never|rarely)\s+${FILLER}(?:add|follow|friend)\s+(?:you\s+|u\s+|people\s+|anyone\s+)?back\b`,
+            'i',
+        ),
         weight: 0,
     },
+    // 這條刻意不允許夾字：要避開 "don't hesitate to add me"、"don't forget to add me"
     { label: "don't add me", pattern: /\b(?:don'?t|do not|pls don'?t|please don'?t)\s+add me\b/i, weight: 0 },
     { label: '不互關', pattern: /不(?:互關|互关|回關|回关|互粉|回粉|接受互)|拒絕互關|拒绝互关/, weight: 0 },
     { label: '相互お断り', pattern: /相互(?:お断り|はしません|しません|不可)/, weight: 0 },
@@ -114,21 +135,29 @@ export function detectMutualIntent(raw: string): Detection {
 
     let score = 0;
     const labels: string[] = [];
-    let best: { weight: number; index: number; length: number } | null = null;
+    // 已經計分過的文字範圍 [起點, 終點)。第一個（權重最高的）命中就是摘錄的位置。
+    const counted: [number, number][] = [];
+    const overlaps = (start: number, end: number) => counted.some(([s, e]) => start < e && s < end);
 
-    for (const rule of POSITIVE) {
-        const match = rule.pattern.exec(text);
-        if (!match) continue;
-        score += rule.weight;
-        labels.push(rule.label);
-        if (!best || rule.weight > best.weight) best = { weight: rule.weight, index: match.index, length: match[0].length };
+    for (const rule of POSITIVE_BY_WEIGHT) {
+        // 找這條規則在文字中「第一個沒跟已計分段落重疊」的命中；同一條規則最多只算一次
+        for (const match of text.matchAll(rule.pattern)) {
+            const start = match.index;
+            const end = start + match[0].length;
+            if (overlaps(start, end)) continue;
+            score += rule.weight;
+            labels.push(rule.label);
+            counted.push([start, end]);
+            break;
+        }
     }
 
+    const best = counted[0];
     if (!best) return { level: 'none', score: 0, labels: [], snippet: null };
     return {
         level: score >= 3 ? 'strong' : 'weak',
         score,
         labels,
-        snippet: snippetAround(text, best.index, best.length),
+        snippet: snippetAround(text, best[0], best[1] - best[0]),
     };
 }

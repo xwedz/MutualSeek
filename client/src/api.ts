@@ -21,8 +21,8 @@ export const fetchMe = () => fetch('/api/me').then(res => parse<MeResponse>(res)
 
 export const logout = () => fetch('/api/auth/logout', { method: 'POST' }).then(res => parse<{ ok: true }>(res));
 
-export const fetchCandidates = (params: { level: 'strong' | 'any'; active: number; offset: number }) =>
-    fetch(`/api/candidates?level=${params.level}&active=${params.active}&offset=${params.offset}`).then(res =>
+export const fetchCandidates = (params: { level: 'strong' | 'any'; offset: number }) =>
+    fetch(`/api/candidates?level=${params.level}&offset=${params.offset}`).then(res =>
         parse<CandidatesResponse>(res),
     );
 

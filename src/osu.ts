@@ -19,6 +19,9 @@ export interface OsuUserCompact {
     username: string;
     avatar_url: string;
     country_code: string;
+    // 30 天內上線過（osu-web 的 User::isActive）。官方網站排行榜上名字變暗就是這個值為 false。
+    // 用的是真實的最後上線時間，對方隱藏上線狀態時也照樣有值。
+    is_active: boolean;
     is_bot: boolean;
     is_deleted: boolean;
     is_supporter: boolean;

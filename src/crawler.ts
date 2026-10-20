@@ -8,7 +8,9 @@
 //
 // 流程：
 //   A. 排行榜：每天從第 1 頁走到最後一頁（國家排行榜最多 10,000 名、每頁 50 人），
-//      每次執行走 2 頁，把玩家基本資料寫進 players。最後上線太久的人不排進掃描佇列。
+//      每次執行走 2 頁。只保留活躍的玩家（is_active，也就是官方網站上名字是亮色的人）；
+//      不活躍的人不存，已經存過的直接刪除，不浪費掃描次數和資料庫空間。
+//      對方重新上線後，下一輪排行榜（最多隔一天）就會自動回到名單裡。
 //   B. 個人頁面：從佇列取出到期的 15 人，逐一抓個人頁面、判斷有沒有在找 mutual。
 //      掃過的人 14 天後再重掃一次（個人頁面可能改了）。
 //
@@ -26,7 +28,6 @@ const REQUEST_GAP_MS = 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RANKING_REFRESH_MS = DAY_MS;
 const RESCAN_AFTER_MS = 14 * DAY_MS;
-const ACTIVE_WITHIN_MS = 60 * DAY_MS; // 超過 60 天沒上線的人不掃，加了也不太可能回
 const STATS_REFRESH_MS = 60 * 60 * 1000;
 
 const STATE_KEY = 'crawler:state';
@@ -56,7 +57,6 @@ interface RankingRow {
     pp: number | null;
     lastVisit: number | null;
     pmFriendsOnly: boolean;
-    active: boolean;
 }
 
 interface ScanRow {
@@ -97,6 +97,7 @@ export async function runCrawler(env: Env): Promise<string> {
     if (state.nextPage === null && now >= state.nextPassAt) state.nextPage = 1;
 
     const rankingRows: RankingRow[] = [];
+    const inactiveIds: number[] = [];
     let stopped: unknown = null;
 
     try {
@@ -108,7 +109,10 @@ export async function runCrawler(env: Env): Promise<string> {
                 token,
             );
             res.ranking.forEach((entry, index) => {
-                const lastVisit = parseTime(entry.user.last_visit);
+                if (!entry.user.is_active) {
+                    inactiveIds.push(entry.user.id);
+                    return;
+                }
                 rankingRows.push({
                     id: entry.user.id,
                     username: entry.user.username,
@@ -117,10 +121,8 @@ export async function runCrawler(env: Env): Promise<string> {
                     globalRank: entry.global_rank,
                     countryRank: (page - 1) * RANKING_PAGE_SIZE + index + 1,
                     pp: entry.pp,
-                    lastVisit,
+                    lastVisit: parseTime(entry.user.last_visit),
                     pmFriendsOnly: entry.user.pm_friends_only,
-                    // 隱藏上線狀態（null）的人無法判斷，先當作活躍
-                    active: lastVisit === null || lastVisit >= now - ACTIVE_WITHIN_MS,
                 });
             });
             state.nextPage = res.cursor?.page ?? null;
@@ -130,11 +132,16 @@ export async function runCrawler(env: Env): Promise<string> {
         stopped = err;
     }
 
+    if (inactiveIds.length > 0) {
+        // 已經存過、但現在變成不活躍的人：連同掃描結果一起刪掉（沒存過的人刪了也沒影響）
+        await db
+            .prepare('DELETE FROM players WHERE id IN (SELECT value FROM json_each(?1))')
+            .bind(JSON.stringify(inactiveIds))
+            .run();
+    }
+
     if (rankingRows.length > 0) {
-        // scan_due_at 的規則：
-        //   - 不活躍 → null（移出佇列）
-        //   - 活躍且原本不在佇列（新玩家、或重新變活躍）→ 立刻到期
-        //   - 活躍且已經排好下次掃描時間 → 保持不變
+        // scan_due_at 的規則：新玩家（或重新回到名單的人）立刻到期；已經排好下次掃描時間的人保持不變。
         // "WHERE true" 是 SQLite 的語法要求：INSERT ... SELECT 搭配 ON CONFLICT 時，避免解析歧義。
         await db
             .prepare(
@@ -142,8 +149,7 @@ export async function runCrawler(env: Env): Promise<string> {
                                       last_visit, pm_friends_only, ranking_seen_at, scan_due_at)
                  SELECT r.value ->> 'id', r.value ->> 'username', r.value ->> 'avatarUrl', r.value ->> 'countryCode',
                         r.value ->> 'globalRank', r.value ->> 'countryRank', r.value ->> 'pp', r.value ->> 'lastVisit',
-                        r.value ->> 'pmFriendsOnly', ?2,
-                        CASE WHEN r.value ->> 'active' THEN ?2 END
+                        r.value ->> 'pmFriendsOnly', ?2, ?2
                  FROM json_each(?1) AS r WHERE true
                  ON CONFLICT (id) DO UPDATE SET
                      username = excluded.username,
@@ -155,8 +161,7 @@ export async function runCrawler(env: Env): Promise<string> {
                      last_visit = excluded.last_visit,
                      pm_friends_only = excluded.pm_friends_only,
                      ranking_seen_at = excluded.ranking_seen_at,
-                     scan_due_at = CASE WHEN excluded.scan_due_at IS NULL THEN NULL
-                                        ELSE COALESCE(players.scan_due_at, excluded.scan_due_at) END`,
+                     scan_due_at = COALESCE(players.scan_due_at, excluded.scan_due_at)`,
             )
             .bind(JSON.stringify(rankingRows), now)
             .run();
@@ -234,7 +239,7 @@ export async function runCrawler(env: Env): Promise<string> {
 
     await writeKv(db, STATE_KEY, state).run();
 
-    const summary = `排行榜 ${rankingRows.length} 人、掃描 ${scanRows.length} 人、下一頁 ${state.nextPage ?? '（本輪完成）'}`;
+    const summary = `排行榜 ${rankingRows.length} 人（略過不活躍 ${inactiveIds.length} 人）、掃描 ${scanRows.length} 人、下一頁 ${state.nextPage ?? '（本輪完成）'}`;
     if (stopped) {
         console.error(`掃描中斷（${summary}）:`, stopped);
     }

@@ -12,7 +12,6 @@ import { getSessionUser, type SessionUser } from './session';
 
 const app = new Hono<AppEnv>();
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const SYNC_COOLDOWN_MS = 60 * 1000; // 同一個人一分鐘內重複按「同步」，直接回傳現有資料
 const PAGE_SIZE = 30;
 // osu! 好友上限（官方 supporter 頁面：supporter 從 500 提高到 1000）
@@ -56,14 +55,14 @@ app.get('/api/me', async c => {
 
 /**
  * 候選人列表：背景掃描判定為在找 mutual 的玩家。
+ * players 表裡只有活躍的玩家（見 crawler.ts），所以這裡不用再篩選最後上線時間。
  * 登入後會排除「已經在你好友名單裡」的人（以最近一次同步為準）與你自己。
  *   level=strong（預設）只看明確在找的；level=any 連「有提到 mutual」的也列出
- *   active=天數，只看這段時間內上線過的人（隱藏上線狀態的人一律保留）
+ * 排序：分數高的優先；同分時最近上線的優先（隱藏上線狀態的人排在同分的最後）。
  */
 app.get('/api/candidates', async c => {
     const user = await getSessionUser(c);
     const level = c.req.query('level') === 'any' ? 'any' : 'strong';
-    const activeDays = Math.min(Math.max(Number(c.req.query('active')) || 30, 1), 365);
     const offset = Math.max(Number(c.req.query('offset')) || 0, 0);
 
     const { results } = await c.env.DB.prepare(
@@ -74,11 +73,10 @@ app.get('/api/candidates', async c => {
          WHERE p.mutual_level IN ('strong', ?2)
            AND f.target_id IS NULL
            AND p.id != ?1
-           AND (p.last_visit IS NULL OR p.last_visit >= ?3)
          ORDER BY p.mutual_score DESC, p.last_visit DESC
-         LIMIT ?4 OFFSET ?5`,
+         LIMIT ?3 OFFSET ?4`,
     )
-        .bind(user?.osuUserId ?? 0, level === 'any' ? 'weak' : 'strong', Date.now() - activeDays * DAY_MS, PAGE_SIZE + 1, offset)
+        .bind(user?.osuUserId ?? 0, level === 'any' ? 'weak' : 'strong', PAGE_SIZE + 1, offset)
         .all();
 
     // 多查一筆：查得到第 PAGE_SIZE + 1 筆，就代表還有下一頁

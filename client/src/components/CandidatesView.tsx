@@ -14,7 +14,6 @@ type Level = 'strong' | 'any';
 
 export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
     const [level, setLevel] = useLocalStorage<Level>('filter.level', 'strong');
-    const [active, setActive] = useLocalStorage<number>('filter.active', 30);
     const [template, setTemplate] = useLocalStorage('dm.template', DEFAULT_TEMPLATE);
     const [skipped, setSkipped] = useLocalStorage<number[]>('skipped', []);
 
@@ -35,7 +34,7 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
             setLoading(true);
             setError(null);
             try {
-                const data = await fetchCandidates({ level, active, offset });
+                const data = await fetchCandidates({ level, offset });
                 if (id !== requestId.current) return;
                 setCandidates(prev => (offset === 0 ? data.candidates : [...prev, ...data.candidates]));
                 setHasMore(data.hasMore);
@@ -45,7 +44,7 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
                 if (id === requestId.current) setLoading(false);
             }
         },
-        [level, active],
+        [level],
     );
 
     useEffect(() => {
@@ -84,16 +83,6 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
                     options={[
                         { value: 'strong', label: 'Clearly looking' },
                         { value: 'any', label: 'Include maybes' },
-                    ]}
-                />
-                <Segmented<number>
-                    label="Last seen"
-                    value={active}
-                    onChange={setActive}
-                    options={[
-                        { value: 7, label: '7 days' },
-                        { value: 30, label: '30 days' },
-                        { value: 90, label: '90 days' },
                     ]}
                 />
                 <button

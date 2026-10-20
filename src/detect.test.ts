@@ -30,6 +30,10 @@ describe('detectMutualIntent', () => {
         'DM me if you added me',
         'dm for mutual',
         'pm me for mutuals',
+        'feel free to ask for mutual',
+        'feel free to dm for mutual',
+        'just ask me for mutuals',
+        "don't forget to follow back!",
         '歡迎互關～',
         '相互フォロー歓迎です',
         '맞팔 환영',
@@ -37,7 +41,7 @@ describe('detectMutualIntent', () => {
         expect(detectMutualIntent(text).level).toBe('strong');
     });
 
-    it.each(['thanks to all my mutuals', 'feel free to add me'])('marks "%s" as weak', text => {
+    it.each(['thanks to all my mutuals', 'feel free to add me', "don't hesitate to add me"])('marks "%s" as weak', text => {
         expect(detectMutualIntent(text).level).toBe('weak');
     });
 
@@ -47,6 +51,11 @@ describe('detectMutualIntent', () => {
         "I don't add back, sorry",
         "please don't add me",
         'mutuals closed',
+        // 否定詞與動詞中間夾了字
+        "I'm not really looking for mutuals",
+        'not currently accepting new mutuals',
+        "I don't usually add back",
+        'no more new mutuals, sorry',
         '不互關 謝謝',
         '相互はしません',
     ])('marks "%s" as negative', text => {
@@ -56,6 +65,17 @@ describe('detectMutualIntent', () => {
     it('lets a negative rule win over positive ones', () => {
         // 同時有「add me」與「no mutuals」：寧可漏掉，也不要推薦明說不要的人
         expect(detectMutualIntent('add me on discord! no mutuals though').level).toBe('negative');
+    });
+
+    it('counts the same piece of text only once', () => {
+        // "add me" 和 "mutual" 都在 "add me for mutual" 裡面，不能再各加一次分
+        expect(detectMutualIntent('add me for mutual').score).toBe(3);
+        expect(detectMutualIntent('mutual mutual mutual').score).toBe(1);
+    });
+
+    it('still counts a weaker rule when it appears elsewhere in the text', () => {
+        // 第二個 "add me" 在別的位置，是獨立的訊號：3 + 2
+        expect(detectMutualIntent('add me for mutual! or just add me on discord').score).toBe(5);
     });
 
     it('ignores pages without any signal', () => {
