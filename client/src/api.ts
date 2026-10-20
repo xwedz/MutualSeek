@@ -31,6 +31,8 @@ export const fetchFriends = () => fetch('/api/friends').then(res => parse<Friend
 
 export const syncFriends = () => fetch('/api/friends/sync', { method: 'POST' }).then(res => parse<FriendsResponse>(res));
 
-export const fetchStats = () => fetch('/api/stats').then(res => parse<StatsResponse>(res));
+export const deleteMyData = () => fetch('/api/account/delete', { method: 'POST' }).then(res => parse<{ ok: true }>(res));
+
+export const fetchStats =() => fetch('/api/stats').then(res => parse<StatsResponse>(res));
 
 export const profileUrl = (id: number) => `https://osu.ppy.sh/users/${id}`;

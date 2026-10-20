@@ -18,7 +18,7 @@ const LOGIN_ERRORS: Record<string, string> = {
 export default function App() {
     const [me, setMe] = useState<MeResponse | null>(null);
     const [tab, setTab] = useState<Tab>('find');
-    const [notice, setNotice] = useState<string | null>(null);
+    const [notice, setNotice] = useState<{ text: string; tone: 'error' | 'success' } | null>(null);
     // 掃描進度與各國人數：頁尾和國家選單都要用，在這裡抓一次再往下傳
     const [stats, setStats] = useState<StatsResponse | null>(null);
 
@@ -33,12 +33,19 @@ export default function App() {
         const params = new URLSearchParams(location.search);
         const reason = params.get('login');
         if (reason) {
-            setNotice(LOGIN_ERRORS[reason] ?? LOGIN_ERRORS.error!);
+            setNotice({ text: LOGIN_ERRORS[reason] ?? LOGIN_ERRORS.error!, tone: 'error' });
             history.replaceState(null, '', location.pathname);
         }
     }, []);
 
     const user = me?.user ?? null;
+
+    // 資料刪除後：後端已經清掉登入狀態，這裡只要更新畫面
+    function handleDeleted() {
+        setMe({ user: null });
+        setTab('find');
+        setNotice({ text: "Your data has been deleted and this site's access to your osu! account was revoked.", tone: 'success' });
+    }
 
     async function handleLogout() {
         await logout().catch(() => {});
@@ -90,7 +97,14 @@ export default function App() {
             </header>
 
             {notice && (
-                <p className="mt-3 animate-fade-in rounded-xl border border-bad/40 bg-bad/10 px-4 py-3 text-sm text-bad">{notice}</p>
+                <p
+                    key={notice.text}
+                    className={`mt-3 animate-fade-in rounded-xl border px-4 py-3 text-sm ${
+                        notice.tone === 'error' ? 'border-bad/40 bg-bad/10 text-bad' : 'border-good/40 bg-good/10 text-good'
+                    }`}
+                >
+                    {notice.text}
+                </p>
             )}
 
             <nav className="relative mt-5 flex border-b border-line" aria-label="Sections">
@@ -120,7 +134,7 @@ export default function App() {
                 {tab === 'find' && <CandidatesView loggedIn={Boolean(user)} defaultCountry={user?.countryCode ?? null} stats={stats} />}
                 {tab === 'track' &&
                     (user ? (
-                        <TrackingView />
+                        <TrackingView onDeleted={handleDeleted} />
                     ) : (
                         <div className="rounded-2xl border border-line bg-surface px-6 py-10 text-center">
                             <p className="text-lg font-semibold">See who followed you back</p>

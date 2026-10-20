@@ -114,9 +114,12 @@ const EXPIRY_MARGIN_MS = 5 * 60 * 1000; // 提早 5 分鐘換新，避免剛好�
 /**
  * 背景掃描不代表任何使用者，所以用 client credentials 換一個只能讀公開資料的 token。
  * token 有效期約一天，存在 kv 表裡重複使用，不用每分鐘都重新申請。
+ *
+ * forceNew：不管快取、直接重新申請。用在 API 回 401 的時候：token 可能在過期前就失效了
+ * （例如換了 OAuth 應用程式、重新產生了 client secret），快取的過期時間就不準了。
  */
-export async function getAppToken(env: Env): Promise<string> {
-    const row = await env.DB.prepare('SELECT value FROM kv WHERE key = ?').bind(APP_TOKEN_KEY).first<{ value: string }>();
+export async function getAppToken(env: Env, forceNew = false): Promise<string> {
+    const row = forceNew ? null : await env.DB.prepare('SELECT value FROM kv WHERE key = ?').bind(APP_TOKEN_KEY).first<{ value: string }>();
     if (row) {
         const cached = JSON.parse(row.value) as { token: string; expiresAt: number };
         if (cached.expiresAt - EXPIRY_MARGIN_MS > Date.now()) {
@@ -133,6 +136,23 @@ export async function getAppToken(env: Env): Promise<string> {
         .bind(APP_TOKEN_KEY, value)
         .run();
     return res.access_token;
+}
+
+/**
+ * 向 osu! 撤銷這個 token（連同它的 refresh token，osu-web 的 revokeRecursive）。
+ * 這個 API 允許任何 token 撤銷自己（require-scopes:any），不需要特別的權限。
+ * 回傳是否成功；失敗不丟例外，因為撤銷是「盡量做」，不能因此擋住登出或刪除資料。
+ */
+export async function revokeToken(accessToken: string): Promise<boolean> {
+    try {
+        const res = await fetch(`${OSU}/api/v2/oauth/tokens/current`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+        });
+        return res.ok;
+    } catch {
+        return false;
+    }
 }
 
 // ---------- 使用者的 token（讀好友名單用） ----------
@@ -175,13 +195,14 @@ export async function saveAccount(
 
 /**
  * 取得某位使用者可用的 access token。過期了就用 refresh token 換新的。
- * 回傳 null 代表需要使用者重新登入（從沒登入過、或 refresh token 也失效了，例如對方在 osu! 撤銷了授權）。
+ * 回傳 null 代表需要使用者重新登入：從沒登入過、登出時已經清除了 token（見 account.ts），
+ * 或 refresh token 也失效了（例如對方在 osu! 撤銷了授權）。
  */
 export async function getUserToken(env: Env, accountId: number): Promise<string | null> {
     const row = await env.DB.prepare('SELECT access_token, refresh_token, token_expires_at FROM accounts WHERE osu_user_id = ?')
         .bind(accountId)
         .first<AccountTokenRow>();
-    if (!row) return null;
+    if (!row || !row.refresh_token) return null;
 
     if (row.token_expires_at - EXPIRY_MARGIN_MS > Date.now()) {
         return decryptToken(env.TOKEN_ENCRYPTION_KEY, row.access_token);

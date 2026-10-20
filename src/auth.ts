@@ -11,7 +11,8 @@ import { Hono } from 'hono';
 import type { AppEnv } from './env';
 import { toBase64Url } from './encoding';
 import { apiGet, requestToken, saveAccount, type OsuUserCompact } from './osu';
-import { clearCookie, endSession, readSealedCookie, setSealedCookie, startSession } from './session';
+import { forgetTokens } from './account';
+import { clearCookie, endSession, getSessionUser, readSealedCookie, setSealedCookie, startSession } from './session';
 
 const STATE_COOKIE = 'osu_oauth_state';
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -79,7 +80,11 @@ auth.get('/callback', async c => {
     }
 });
 
-auth.post('/logout', c => {
+// 登出：除了清掉瀏覽器的 cookie，也向 osu! 撤銷 token 並從資料庫清除（好友快照與紀錄保留）。
+// 用 POST 而不是 GET：cookie 設了 SameSite=Lax，其他網站無法替使用者送出跨站 POST，避免被惡意登出。
+auth.post('/logout', async c => {
+    const user = await getSessionUser(c);
+    if (user) await forgetTokens(c.env, user.osuUserId);
     endSession(c);
     return c.json({ ok: true });
 });

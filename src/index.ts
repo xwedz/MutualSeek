@@ -4,12 +4,13 @@
 // scheduled：Cron Trigger 每分鐘呼叫一次，執行背景掃描。
 
 import { Hono, type Context } from 'hono';
+import { deleteAccountData } from './account';
 import auth from './auth';
 import { getCrawlerProgress, runCrawler } from './crawler';
 import type { Snippet } from './detect';
 import type { AppEnv, Env } from './env';
 import { syncFriends, type FriendRow } from './friends';
-import { getSessionUser, type SessionUser } from './session';
+import { endSession, getSessionUser, type SessionUser } from './session';
 
 const app = new Hono<AppEnv>();
 
@@ -140,6 +141,15 @@ app.post('/api/friends/sync', async c => {
         account = (await loadAccount(c, user)) ?? account;
     }
     return c.json({ result, ...(await friendsResponse(c, user, account)) });
+});
+
+/** 刪除我的資料：撤銷 token、刪除帳號與好友紀錄，然後登出。無法復原（前端會先跳確認視窗）。 */
+app.post('/api/account/delete', async c => {
+    const user = await getSessionUser(c);
+    if (!user) return c.json({ error: 'Please log in first.' }, 401);
+    await deleteAccountData(c.env, user.osuUserId);
+    endSession(c);
+    return c.json({ ok: true });
 });
 
 /** 背景掃描的進度（顯示在頁尾）。 */

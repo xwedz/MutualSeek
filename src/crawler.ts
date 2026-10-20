@@ -103,15 +103,17 @@ function writeKv(db: D1Database, key: string, value: unknown) {
         .bind(key, JSON.stringify(value));
 }
 
+type ApiGet = <T>(path: string) => Promise<T>;
+
 /** 這一輪要掃的國家：設定為 "all" 時讀國家排行榜，依活躍玩家數從多到少排序。 */
-async function loadCountries(env: Env, token: string, request: () => Promise<void>): Promise<string[]> {
+async function loadCountries(env: Env, get: ApiGet, request: () => Promise<void>): Promise<string[]> {
     if (env.SCAN_COUNTRIES.trim().toLowerCase() !== 'all') {
         return env.SCAN_COUNTRIES.split(',').map(code => code.trim().toUpperCase()).filter(Boolean);
     }
     const entries: CountryRankingResponse['ranking'] = [];
     for (let page: number | null = 1; page !== null; ) {
         await request();
-        const res: CountryRankingResponse = await apiGet<CountryRankingResponse>(`/rankings/${env.SCAN_MODE}/country?page=${page}`, token);
+        const res: CountryRankingResponse = await get<CountryRankingResponse>(`/rankings/${env.SCAN_MODE}/country?page=${page}`);
         entries.push(...res.ranking);
         page = res.cursor?.page ?? null;
     }
@@ -127,7 +129,22 @@ export async function runCrawler(env: Env): Promise<string> {
     // 舊版的狀態格式不同（沒有 countries 欄位），直接當作重新開始
     const saved = await readKv<Partial<CrawlerState>>(db, STATE_KEY);
     const state: CrawlerState = saved && Array.isArray(saved.countries) ? { ...initialState(), ...saved } : initialState();
-    const token = await getAppToken(env);
+    let token = await getAppToken(env);
+    let tokenRenewed = false;
+
+    // 所有 API 呼叫都經過這裡：收到 401 代表快取的 token 在過期前就失效了（例如換了 OAuth 應用程式），
+    // 就重新申請一個、重試一次。只重試一次：新 token 也 401（例如 secret 填錯）就往外丟，不會一直重打。
+    const get: ApiGet = async <T>(path: string) => {
+        try {
+            return await apiGet<T>(path, token);
+        } catch (err) {
+            if (tokenRenewed || !(err instanceof OsuApiError && err.status === 401)) throw err;
+            tokenRenewed = true;
+            console.warn('[crawler] App token 被拒絕（401），重新申請後重試');
+            token = await getAppToken(env, true);
+            return apiGet<T>(path, token);
+        }
+    };
 
     let requests = 0;
     const canRequest = () => requests < MAX_REQUESTS_PER_RUN && Date.now() - startedAt < RUN_DEADLINE_MS;
@@ -145,7 +162,7 @@ export async function runCrawler(env: Env): Promise<string> {
     try {
         // ---------- 開始新的一輪（上一輪的待掃清單要先掃完；而且距離上一輪開始至少 7 天） ----------
         if (state.countries.length === 0 && state.pending.length === 0 && startedAt - state.passStartedAt >= MIN_PASS_INTERVAL_MS) {
-            state.countries = await loadCountries(env, token, request);
+            state.countries = await loadCountries(env, get, request);
             Object.assign(state, { countryIndex: 0, nextPage: 1, countryStartedAt: startedAt, passStartedAt: startedAt, passScanned: 0 });
         }
 
@@ -155,10 +172,7 @@ export async function runCrawler(env: Env): Promise<string> {
             if (state.pending.length === 0) {
                 const country = state.countries[state.countryIndex]!;
                 await request();
-                const res = await apiGet<RankingResponse>(
-                    `/rankings/${env.SCAN_MODE}/performance?country=${country}&page=${state.nextPage}`,
-                    token,
-                );
+                const res = await get<RankingResponse>(`/rankings/${env.SCAN_MODE}/performance?country=${country}&page=${state.nextPage}`);
                 pagesRead++;
                 for (const entry of res.ranking) {
                     if (entry.user.is_active) state.pending.push(entry.user.id);
@@ -185,7 +199,7 @@ export async function runCrawler(env: Env): Promise<string> {
             const id = state.pending[0]!;
             await request();
             try {
-                const user = await apiGet<OsuUser>(`/users/${id}/${env.SCAN_MODE}?key=id`, token);
+                const user = await get<OsuUser>(`/users/${id}/${env.SCAN_MODE}?key=id`);
                 const detection = detectMutualMention(user.page?.raw ?? '');
                 if (user.is_active && detection.mentioned) {
                     upserts.push({

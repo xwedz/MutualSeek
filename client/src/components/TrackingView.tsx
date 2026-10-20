@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { ApiError, profileUrl, syncFriends } from '../api';
+import { ApiError, deleteMyData, profileUrl, syncFriends } from '../api';
 import { daysSince, timeAgo } from '../format';
 import type { Friend, FriendEvent, FriendEventType, FriendsResponse } from '../types';
 import { Avatar } from './Avatar';
+import { ConfirmDialog } from './ConfirmDialog';
 import { ChevronIcon, ExternalIcon, LinkIcon, RefreshIcon, Spinner, UnlinkIcon, UserMinusIcon, UserPlusIcon } from './Icons';
 
 // 加了幾天還沒回加，就建議考慮移除，把好友名額留給其他人
 const STALE_DAYS = 7;
 
-export function TrackingView() {
+export function TrackingView({ onDeleted }: { onDeleted: () => void }) {
     const [data, setData] = useState<FriendsResponse | null>(null);
     const [syncing, setSyncing] = useState(true);
     const [error, setError] = useState<{ message: string; relogin: boolean } | null>(null);
@@ -121,7 +122,61 @@ export function TrackingView() {
                     <Spinner size={22} />
                 </div>
             )}
+
+            <DeleteMyData onDeleted={onDeleted} />
         </section>
+    );
+}
+
+/** 頁面最下方的「刪除我的資料」：先跳確認視窗，確認後才真的刪除。 */
+function DeleteMyData({ onDeleted }: { onDeleted: () => void }) {
+    const [confirming, setConfirming] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    async function remove() {
+        setDeleting(true);
+        setError(null);
+        try {
+            await deleteMyData();
+            onDeleted();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Could not delete your data. Please try again.');
+            setDeleting(false);
+        }
+    }
+
+    return (
+        <div className="mt-14 rounded-2xl border border-bad/25 px-4 py-4">
+            <h2 className="font-semibold">Delete my data</h2>
+            <p className="mt-1 text-sm text-muted">
+                Removes your friend list snapshots and follow-back history from this site, revokes its access to your osu! account, and logs
+                you out. Logging out alone keeps your history but also revokes access.
+            </p>
+            <button
+                type="button"
+                onClick={() => setConfirming(true)}
+                disabled={deleting}
+                className="mt-3 inline-flex items-center gap-2 rounded-xl border border-bad/50 px-3.5 py-2 text-sm font-medium text-bad transition-colors hover:bg-bad/10 disabled:opacity-60"
+            >
+                {deleting && <Spinner size={14} />}
+                {deleting ? 'Deleting…' : 'Delete my data'}
+            </button>
+            {error && <p className="mt-2 animate-fade-in text-sm text-bad">{error}</p>}
+
+            {confirming && (
+                <ConfirmDialog
+                    title="Delete all your data?"
+                    confirmLabel="Delete everything"
+                    danger
+                    onConfirm={remove}
+                    onClose={() => setConfirming(false)}
+                >
+                    <p>This permanently deletes your friend list snapshots and your follow-back history. It can't be undone.</p>
+                    <p>You can log in again later, but tracking will start over from scratch.</p>
+                </ConfirmDialog>
+            )}
+        </div>
     );
 }
 

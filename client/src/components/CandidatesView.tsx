@@ -6,7 +6,7 @@ import { useLocalStorage } from '../useLocalStorage';
 import { CandidateCard } from './CandidateCard';
 import { CountrySelect } from './CountrySelect';
 import { ChevronIcon, InfoIcon, PencilIcon, Spinner } from './Icons';
-import { ReadFirstDialog } from './ReadFirstDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 
 const DEFAULT_TEMPLATE = "Hi {name}! Saw on your profile that you're open to mutuals, just added you :)";
 const LEAVE_MS = 250; // 跟 index.css 的 fade-out 時間一致
@@ -105,7 +105,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
             </p>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
-                <CountrySelect value={country} options={stats?.byCountry ?? []} total={stats?.mentioned ?? null} onChange={setChosenCountry} />
+                <CountrySelect value={country} countries={(stats?.byCountry ?? []).map(c => c.code)} onChange={setChosenCountry} />
                 <button
                     type="button"
                     onClick={() => setEditingTemplate(v => !v)}
@@ -196,15 +196,24 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
             )}
 
             {dialogFor && (
-                <ReadFirstDialog
-                    username={dialogFor.username}
+                // 第一次開個人頁面時的說明，按確認後就不再出現。
+                // 只出現一次是刻意的：同樣的視窗每次都跳，使用者很快就會不看內容直接關掉（警告疲勞）。
+                <ConfirmDialog
+                    title={`Before you add ${dialogFor.username}`}
+                    confirmLabel="I understand, open profile"
                     onConfirm={() => {
                         setReadFirstSeen(true);
                         // 在點擊當下開分頁；noopener 讓新分頁拿不到這個頁面的 window 物件
                         window.open(profileUrl(dialogFor.id), '_blank', 'noopener,noreferrer');
                     }}
                     onClose={() => setDialogFor(null)}
-                />
+                >
+                    <p>
+                        This list shows players whose profile <span className="font-semibold text-pink">mentions</span> mutuals. It can't
+                        tell whether they actually want them. Some people mention mutuals only to say no.
+                    </p>
+                    <p>Please read what they wrote yourself before adding or messaging them, so you don't bother anyone who isn't looking.</p>
+                </ConfirmDialog>
             )}
 
             {!loading && hasMore && (
