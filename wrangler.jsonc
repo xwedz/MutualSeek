@@ -36,8 +36,9 @@
     "triggers": { "crons": ["* * * * *"] },
 
     "vars": {
-        // 第一版只掃台灣、osu! 標準模式。之後要擴大範圍改這裡就好。
-        "SCAN_COUNTRY": "TW",
+        // 掃描範圍："all" = 所有國家（依活躍玩家數從多到少逐國掃描），
+        // 也可以填逗號分隔的國家代碼，例如 "TW,JP"。目前只掃 osu! 標準模式。
+        "SCAN_COUNTRIES": "all",
         "SCAN_MODE": "osu"
     }
 

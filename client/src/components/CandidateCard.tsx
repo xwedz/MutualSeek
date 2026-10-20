@@ -1,5 +1,6 @@
 import type { MouseEvent } from 'react';
 import { profileUrl } from '../api';
+import { countryName } from '../countries';
 import { formatNumber, timeAgo } from '../format';
 import type { Candidate } from '../types';
 import { Avatar } from './Avatar';
@@ -10,13 +11,14 @@ interface Props {
     index: number;
     leaving: boolean;
     copied: boolean;
+    showCountry: boolean; // 選「All countries」時顯示對方的國家
     /** 點擊「Open profile」或名字時呼叫；父元件可以 preventDefault 改成先顯示說明視窗 */
     onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
     onCopy: () => void;
     onSkip: () => void;
 }
 
-export function CandidateCard({ candidate: c, index, leaving, copied, onOpen, onCopy, onSkip }: Props) {
+export function CandidateCard({ candidate: c, index, leaving, copied, showCountry, onOpen, onCopy, onSkip }: Props) {
     return (
         <li
             // 進場依序錯開（最多錯開 8 張，避免往下捲時等太久）；按「略過」時淡出後才從列表移除
@@ -38,6 +40,7 @@ export function CandidateCard({ candidate: c, index, leaving, copied, onOpen, on
                         {c.username}
                     </a>
                     <p className="mt-0.5 flex flex-wrap gap-x-3 text-sm text-muted">
+                        {showCountry && c.country_code && <span className="text-ink/80">{countryName(c.country_code)}</span>}
                         {c.country_rank !== null && <span>#{formatNumber(c.country_rank)} in country</span>}
                         <span>{formatNumber(c.pp)}pp</span>
                         {c.follower_count !== null && <span>{formatNumber(c.follower_count)} followers</span>}

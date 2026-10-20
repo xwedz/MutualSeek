@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { fetchCandidates, profileUrl } from '../api';
-import type { Candidate } from '../types';
+import { countryName } from '../countries';
+import type { Candidate, StatsResponse } from '../types';
 import { useLocalStorage } from '../useLocalStorage';
 import { CandidateCard } from './CandidateCard';
+import { CountrySelect } from './CountrySelect';
 import { ChevronIcon, InfoIcon, PencilIcon, Spinner } from './Icons';
 import { ReadFirstDialog } from './ReadFirstDialog';
 
@@ -10,7 +12,16 @@ const DEFAULT_TEMPLATE = "Hi {name}! Saw on your profile that you're open to mut
 const LEAVE_MS = 250; // 跟 index.css 的 fade-out 時間一致
 const COPIED_MS = 1600;
 
-export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
+interface Props {
+    loggedIn: boolean;
+    defaultCountry: string | null; // 登入者自己的國家
+    stats: StatsResponse | null;
+}
+
+export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
+    // 使用者自己選過的國家（記在瀏覽器）；沒選過就用自己的國家，沒登入就看所有國家
+    const [chosenCountry, setChosenCountry] = useLocalStorage<string | null>('filter.country', null);
+    const country = chosenCountry ?? defaultCountry ?? 'all';
     const [template, setTemplate] = useLocalStorage('dm.template', DEFAULT_TEMPLATE);
     const [skipped, setSkipped] = useLocalStorage<number[]>('skipped', []);
     // 使用者是否已經看過「請先讀對方寫了什麼」的說明視窗
@@ -25,24 +36,29 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
     const [copiedId, setCopiedId] = useState<number | null>(null);
     const [editingTemplate, setEditingTemplate] = useState(false);
     const copiedTimer = useRef<number | undefined>(undefined);
-    // 只採用最後一次請求的結果，避免舊結果晚到蓋掉新結果（例如快速連按「Load more」）
+    // 只採用最後一次請求的結果，避免舊結果晚到蓋掉新結果（例如快速切換國家時）
     const requestId = useRef(0);
 
-    const load = useCallback(async (offset: number) => {
-        const id = ++requestId.current;
-        setLoading(true);
-        setError(null);
-        try {
-            const data = await fetchCandidates(offset);
-            if (id !== requestId.current) return;
-            setCandidates(prev => (offset === 0 ? data.candidates : [...prev, ...data.candidates]));
-            setHasMore(data.hasMore);
-        } catch (err) {
-            if (id === requestId.current) setError(err instanceof Error ? err.message : 'Could not load players.');
-        } finally {
-            if (id === requestId.current) setLoading(false);
-        }
-    }, []);
+    const load = useCallback(
+        async (offset: number) => {
+            const id = ++requestId.current;
+            setLoading(true);
+            setError(null);
+            // 換國家（從頭載入）時先清空，不要讓上一個國家的人留在畫面上
+            if (offset === 0) setCandidates([]);
+            try {
+                const data = await fetchCandidates(offset, country);
+                if (id !== requestId.current) return;
+                setCandidates(prev => (offset === 0 ? data.candidates : [...prev, ...data.candidates]));
+                setHasMore(data.hasMore);
+            } catch (err) {
+                if (id === requestId.current) setError(err instanceof Error ? err.message : 'Could not load players.');
+            } finally {
+                if (id === requestId.current) setLoading(false);
+            }
+        },
+        [country],
+    );
 
     useEffect(() => {
         load(0);
@@ -89,6 +105,7 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
             </p>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
+                <CountrySelect value={country} options={stats?.byCountry ?? []} total={stats?.mentioned ?? null} onChange={setChosenCountry} />
                 <button
                     type="button"
                     onClick={() => setEditingTemplate(v => !v)}
@@ -154,6 +171,7 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
                     <CandidateCard
                         key={c.id}
                         candidate={c}
+                        showCountry={country === 'all'}
                         index={i}
                         leaving={leaving.includes(c.id)}
                         copied={copiedId === c.id}
@@ -172,7 +190,8 @@ export function CandidatesView({ loggedIn }: { loggedIn: boolean }) {
 
             {!loading && !error && visible.length === 0 && (
                 <p className="mt-6 animate-fade-in rounded-2xl border border-dashed border-line px-4 py-10 text-center text-muted">
-                    No one to show yet. The scanner checks a few players every minute, so check back later.
+                    {country === 'all' ? 'No one to show yet.' : `No one from ${countryName(country)} yet.`} The scanner goes
+                    through every country in turn, a few players every minute, so check back later.
                 </p>
             )}
 

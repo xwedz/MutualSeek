@@ -59,23 +59,28 @@ app.get('/api/me', async c => {
  * players 表裡只有活躍的玩家（見 crawler.ts），所以這裡不用再篩選最後上線時間。
  * 登入後會排除「已經在你好友名單裡」的人（以最近一次同步為準）與你自己。
  * 排序：最近上線的優先（SQLite 的 DESC 會把 null 排在最後，也就是隱藏上線狀態的人）。
+ *   country=TW 只看某個國家（走 players_mentions_country 索引）；不帶或格式不對就是所有國家（走 players_mentions 索引）
  */
 app.get('/api/candidates', async c => {
     const user = await getSessionUser(c);
     const offset = Math.max(Number(c.req.query('offset')) || 0, 0);
+    const country = c.req.query('country')?.toUpperCase() ?? '';
+    const byCountry = /^[A-Z]{2}$/.test(country);
 
     const { results } = await c.env.DB.prepare(
-        `SELECT p.id, p.username, p.avatar_url, p.global_rank, p.country_rank, p.pp, p.last_visit,
+        `SELECT p.id, p.username, p.avatar_url, p.country_code, p.global_rank, p.country_rank, p.pp, p.last_visit,
                 p.pm_friends_only, p.follower_count, p.mutual_snippet
          FROM players AS p
          LEFT JOIN friendships AS f ON f.account_id = ?1 AND f.target_id = p.id
          WHERE p.mutual_level = 'mention'
+           ${byCountry ? 'AND p.country_code = ?4' : ''}
            AND f.target_id IS NULL
            AND p.id != ?1
          ORDER BY p.last_visit DESC
          LIMIT ?2 OFFSET ?3`,
     )
-        .bind(user?.osuUserId ?? 0, PAGE_SIZE + 1, offset)
+        // 只有依國家篩選時，SQL 裡才有 ?4，所以也只在這時候帶第 4 個參數
+        .bind(...([user?.osuUserId ?? 0, PAGE_SIZE + 1, offset, ...(byCountry ? [country] : [])] as const))
         .all<Record<string, unknown> & { mutual_snippet: string | null }>();
 
     // 多查一筆：查得到第 PAGE_SIZE + 1 筆，就代表還有下一頁
@@ -139,7 +144,7 @@ app.post('/api/friends/sync', async c => {
 
 /** 背景掃描的進度（顯示在頁尾）。 */
 app.get('/api/stats', async c => {
-    return c.json({ country: c.env.SCAN_COUNTRY, mode: c.env.SCAN_MODE, ...(await getCrawlerProgress(c.env.DB)) });
+    return c.json({ countries: c.env.SCAN_COUNTRIES, mode: c.env.SCAN_MODE, ...(await getCrawlerProgress(c.env.DB)) });
 });
 
 app.onError((err, c) => {

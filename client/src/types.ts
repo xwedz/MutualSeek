@@ -4,6 +4,7 @@ export interface SessionUser {
     osuUserId: number;
     username: string;
     avatarUrl: string | null;
+    countryCode: string | null;
 }
 
 export interface AccountInfo {
@@ -26,6 +27,7 @@ export interface Candidate {
     id: number;
     username: string;
     avatar_url: string | null;
+    country_code: string | null;
     global_rank: number | null;
     country_rank: number | null;
     pp: number | null;
@@ -75,9 +77,14 @@ export interface FriendsResponse {
     result?: SyncResult | null;
 }
 
+/** 對照 src/crawler.ts 的 getCrawlerProgress */
 export interface StatsResponse {
-    country: string;
+    countries: string; // "all" 或逗號分隔的國家代碼
     mode: string;
-    rankingNextPage: number | null;
-    stats: { players: number; scanned: number; mentioned: number; updatedAt: number } | null;
+    countriesInPass: number;
+    currentCountry: string | null;
+    passScanned: number;
+    lastPassScanned: number | null;
+    mentioned: number | null;
+    byCountry: { code: string; count: number }[]; // 有候選人的國家，依人數由多到少（每小時更新）
 }

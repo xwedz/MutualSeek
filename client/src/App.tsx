@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { fetchMe, logout } from './api';
+import { fetchMe, fetchStats, logout } from './api';
 import { Avatar } from './components/Avatar';
 import { CandidatesView } from './components/CandidatesView';
 import { Footer } from './components/Footer';
 import { LogoutIcon } from './components/Icons';
 import { TrackingView } from './components/TrackingView';
-import type { MeResponse } from './types';
+import type { MeResponse, StatsResponse } from './types';
 
 type Tab = 'find' | 'track';
 
@@ -19,6 +19,12 @@ export default function App() {
     const [me, setMe] = useState<MeResponse | null>(null);
     const [tab, setTab] = useState<Tab>('find');
     const [notice, setNotice] = useState<string | null>(null);
+    // 掃描進度與各國人數：頁尾和國家選單都要用，在這裡抓一次再往下傳
+    const [stats, setStats] = useState<StatsResponse | null>(null);
+
+    useEffect(() => {
+        fetchStats().then(setStats, () => setStats(null));
+    }, []);
 
     useEffect(() => {
         fetchMe().then(setMe, () => setMe({ user: null }));
@@ -111,7 +117,7 @@ export default function App() {
 
             {/* key 換了就會重新掛載，觸發淡入，切換分頁不會突然跳 */}
             <main key={tab} className="mt-6 animate-fade-up">
-                {tab === 'find' && <CandidatesView loggedIn={Boolean(user)} />}
+                {tab === 'find' && <CandidatesView loggedIn={Boolean(user)} defaultCountry={user?.countryCode ?? null} stats={stats} />}
                 {tab === 'track' &&
                     (user ? (
                         <TrackingView />
@@ -132,7 +138,7 @@ export default function App() {
                     ))}
             </main>
 
-            <Footer />
+            <Footer stats={stats} />
         </div>
     );
 }

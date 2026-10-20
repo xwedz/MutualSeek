@@ -19,6 +19,7 @@ export interface SessionUser {
     osuUserId: number;
     username: string;
     avatarUrl: string | null;
+    countryCode: string | null; // 網站的國家選單預設選這個國家；舊版 session 沒有這個欄位，就是 null
 }
 
 function hmacKey(secret: string): Promise<CryptoKey> {
@@ -90,5 +91,6 @@ export async function getSessionUser(c: Ctx): Promise<SessionUser | null> {
         osuUserId: payload.osuUserId as number,
         username: payload.username,
         avatarUrl: typeof payload.avatarUrl === 'string' ? payload.avatarUrl : null,
+        countryCode: typeof payload.countryCode === 'string' ? payload.countryCode : null,
     };
 }

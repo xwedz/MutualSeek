@@ -16,7 +16,8 @@ export interface Env {
     OSU_REDIRECT_URI?: string;
     FRONTEND_URL?: string;
 
-    SCAN_COUNTRY: string;
+    // "all" = 所有國家（依活躍玩家數從多到少）；也可以填逗號分隔的國家代碼，例如 "TW,JP"
+    SCAN_COUNTRIES: string;
     SCAN_MODE: string;
 }
 

@@ -32,6 +32,18 @@ export interface OsuUserCompact {
 export interface OsuUser extends OsuUserCompact {
     follower_count: number;
     page: { html: string; raw: string };
+    // /users/{id}/{mode} 會帶上該模式的統計（排名、pp），掃描時順便更新，排行榜就不用每次重寫這些欄位
+    statistics?: { global_rank: number | null; country_rank: number | null; pp: number | null };
+}
+
+export interface CountryRankingEntry {
+    code: string;
+    active_users: number;
+}
+
+export interface CountryRankingResponse {
+    ranking: CountryRankingEntry[];
+    cursor: { page: number } | null;
 }
 
 export interface RankingEntry {

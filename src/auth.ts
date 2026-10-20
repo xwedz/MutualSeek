@@ -66,7 +66,12 @@ auth.get('/callback', async c => {
         const me = await apiGet<OsuUserCompact>('/me', tokens.access_token);
 
         await saveAccount(c.env, me, tokens);
-        await startSession(c, { osuUserId: me.id, username: me.username, avatarUrl: me.avatar_url ?? null });
+        await startSession(c, {
+            osuUserId: me.id,
+            username: me.username,
+            avatarUrl: me.avatar_url ?? null,
+            countryCode: me.country_code ?? null,
+        });
         return c.redirect(`${frontend}/`);
     } catch (err) {
         console.error('osu! 登入失敗:', err);

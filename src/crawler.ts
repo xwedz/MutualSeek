@@ -1,76 +1,94 @@
 // src/crawler.ts —— 背景掃描（由 Cron Trigger 每分鐘呼叫一次）。
 //
-// 每次執行只做一小批，原因有三個：
-//   1. osu! API 要求每分鐘不超過 60 個請求；我們每次最多約 17 個，而且每個請求間隔 1 秒。
-//   2. Workers 免費方案每次執行最多 50 個對外請求、CPU 時間 10 毫秒；
-//      個人頁面的 JSON 不小，一次解析太多份可能超過 CPU 限制。
-//   3. D1 免費方案每次執行最多 50 個查詢，而且每天寫入上限 10 萬列。
+// 流程：邊讀排行榜、邊掃描個人頁面，資料庫只保存「有提到 mutual 的人」。
 //
-// 流程：
-//   A. 排行榜：每天從第 1 頁走到最後一頁（國家排行榜最多 10,000 名、每頁 50 人），
-//      每次執行走 2 頁。只保留活躍的玩家（is_active，也就是官方網站上名字是亮色的人）；
-//      不活躍的人不存，已經存過的直接刪除，不浪費掃描次數和資料庫空間。
-//      對方重新上線後，下一輪排行榜（最多隔一天）就會自動回到名單裡。
-//   B. 個人頁面：從佇列取出到期的 15 人，逐一抓個人頁面、判斷有沒有在找 mutual。
-//      掃過的人 14 天後再重掃一次（個人頁面可能改了）。
+//   一輪（pass）= 依活躍玩家數從多到少，逐國讀完排行榜（每國最多 10,000 名、每頁 50 人）。
+//   每讀一頁：
+//     - 不活躍的人（is_active = false，官方網站上名字變暗）直接跳過；如果資料庫裡有，就刪除
+//     - 活躍的人放進待掃清單，逐一抓個人頁面：
+//         有提到 mutual → 存進資料庫（或更新）
+//         沒提到        → 不存；如果資料庫裡有（他把相關文字拿掉了），就刪除
+//   一個國家讀完 → 刪除這個國家「這一輪沒再看到」的人（排名掉出前 1 萬名等）
+//   所有國家讀完 → 這一輪結束；距離這一輪開始至少 7 天後，才開始下一輪
 //
-// 寫入資料庫時，整批資料打包成「一個 JSON 參數」，在 SQL 裡用 json_each 展開。
-// 這樣不管幾筆都只算一個查詢，也不會碰到「每個查詢最多 100 個參數」的限制。
+// 為什麼不把所有玩家都存起來：全世界排行榜上的活躍玩家約 37.5 萬人，全部存的話，
+// 第一輪每天要寫入約 24 萬列，超過 D1 免費方案每天 10 萬列的上限。只存約 9% 提到 mutual 的人，
+// 寫入量和資料量都降到十分之一以下。代價是每一輪都要重新掃描所有活躍玩家（沒有紀錄可以跳過）。
+//
+// 每次執行的限制：
+//   - osu! API 要求每分鐘不超過 60 個請求：每次最多 32 個，間隔 1 秒
+//   - Workers 免費方案每次執行最多 50 個對外請求、CPU 時間 10 毫秒
+//   - D1 免費方案每次執行最多 50 個查詢：整批資料打包成一個 JSON 參數，用 json_each 展開，不管幾筆都只算一個查詢
 
 import { detectMutualMention } from './detect';
 import type { Env } from './env';
-import { apiGet, getAppToken, OsuApiError, parseTime, type OsuUser, type RankingResponse } from './osu';
+import {
+    apiGet,
+    getAppToken,
+    OsuApiError,
+    parseTime,
+    type CountryRankingResponse,
+    type OsuUser,
+    type RankingResponse,
+} from './osu';
 
-const SCAN_BATCH = 15;
-const RANKING_PAGES_PER_RUN = 2;
-const RANKING_PAGE_SIZE = 50; // osu-web 的 Model::PER_PAGE
+const MAX_REQUESTS_PER_RUN = 32;
 const REQUEST_GAP_MS = 1000;
+// 超過這個時間就不再發新請求：每分鐘都會執行一次，拖太久會跟下一次重疊
+const RUN_DEADLINE_MS = 50 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const RANKING_REFRESH_MS = DAY_MS;
-const RESCAN_AFTER_MS = 14 * DAY_MS;
+const MIN_PASS_INTERVAL_MS = 7 * DAY_MS;
+// 統計（含各國人數，給網站的國家選單用）每小時算一次：
+// 只讀提到 mutual 的人（全球規模約 3 萬多列），每天約 80 萬列讀取，是免費額度的 16%
 const STATS_REFRESH_MS = 60 * 60 * 1000;
 
 const STATE_KEY = 'crawler:state';
 const STATS_KEY = 'crawler:stats';
 
 interface CrawlerState {
-    nextPage: number | null; // null = 這一輪排行榜走完了，等 nextPassAt
-    nextPassAt: number;
+    countries: string[]; // 這一輪要走的國家，依活躍玩家數排序；空陣列 = 目前不在任何一輪中
+    countryIndex: number;
+    nextPage: number;
+    countryStartedAt: number; // 目前這個國家從什麼時候開始讀，讀完時用來找出「這一輪沒再看到的人」
+    pending: number[]; // 已經從排行榜讀到、還沒掃描的活躍玩家
+    passStartedAt: number;
+    passScanned: number; // 這一輪掃過幾份個人頁面
+    lastPassScanned: number | null; // 上一輪總共掃了幾份（一輪結束時記下）
     statsUpdatedAt: number;
 }
 
 export interface CrawlerStats {
-    players: number;
-    scanned: number;
     mentioned: number;
+    byCountry: { code: string; count: number }[]; // 依人數由多到少
     updatedAt: number;
 }
 
-interface RankingRow {
+interface PlayerRow {
     id: number;
     username: string;
     avatarUrl: string;
     countryCode: string;
     globalRank: number | null;
-    countryRank: number;
+    countryRank: number | null;
     pp: number | null;
+    followerCount: number;
     lastVisit: number | null;
     pmFriendsOnly: boolean;
+    count: number;
+    snippets: string;
 }
 
-interface ScanRow {
-    id: number;
-    followerCount: number | null;
-    lastVisit: number | null;
-    pmFriendsOnly: boolean | null;
-    // players 表沿用 0001_init.sql 的欄位（已套用的 migration 不修改），內容的意義改成：
-    //   mutual_level   'mention'（有提到 mutual）或 'none'
-    //   mutual_score   關鍵字出現的次數
-    //   mutual_snippet 摘錄（Snippet[] 的 JSON），見 detect.ts
-    level: 'mention' | 'none';
-    score: number;
-    snippet: string | null;
-}
+const initialState = (): CrawlerState => ({
+    countries: [],
+    countryIndex: 0,
+    nextPage: 1,
+    countryStartedAt: 0,
+    pending: [],
+    passStartedAt: 0,
+    passScanned: 0,
+    lastPassScanned: null,
+    statsUpdatedAt: 0,
+});
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -85,170 +103,205 @@ function writeKv(db: D1Database, key: string, value: unknown) {
         .bind(key, JSON.stringify(value));
 }
 
+/** 這一輪要掃的國家：設定為 "all" 時讀國家排行榜，依活躍玩家數從多到少排序。 */
+async function loadCountries(env: Env, token: string, request: () => Promise<void>): Promise<string[]> {
+    if (env.SCAN_COUNTRIES.trim().toLowerCase() !== 'all') {
+        return env.SCAN_COUNTRIES.split(',').map(code => code.trim().toUpperCase()).filter(Boolean);
+    }
+    const entries: CountryRankingResponse['ranking'] = [];
+    for (let page: number | null = 1; page !== null; ) {
+        await request();
+        const res: CountryRankingResponse = await apiGet<CountryRankingResponse>(`/rankings/${env.SCAN_MODE}/country?page=${page}`, token);
+        entries.push(...res.ranking);
+        page = res.cursor?.page ?? null;
+    }
+    return entries
+        .filter(e => e.active_users > 0)
+        .sort((a, b) => b.active_users - a.active_users)
+        .map(e => e.code);
+}
+
 export async function runCrawler(env: Env): Promise<string> {
     const db = env.DB;
-    const now = Date.now();
-    const state = (await readKv<CrawlerState>(db, STATE_KEY)) ?? { nextPage: 1, nextPassAt: 0, statsUpdatedAt: 0 };
+    const startedAt = Date.now();
+    // 舊版的狀態格式不同（沒有 countries 欄位），直接當作重新開始
+    const saved = await readKv<Partial<CrawlerState>>(db, STATE_KEY);
+    const state: CrawlerState = saved && Array.isArray(saved.countries) ? { ...initialState(), ...saved } : initialState();
     const token = await getAppToken(env);
 
     let requests = 0;
-    const throttle = async () => {
+    const canRequest = () => requests < MAX_REQUESTS_PER_RUN && Date.now() - startedAt < RUN_DEADLINE_MS;
+    const request = async () => {
         if (requests++ > 0) await sleep(REQUEST_GAP_MS);
     };
 
-    // ---------- A. 排行榜 ----------
-    if (state.nextPage === null && now >= state.nextPassAt) state.nextPage = 1;
-
-    const rankingRows: RankingRow[] = [];
-    const inactiveIds: number[] = [];
+    const upserts: PlayerRow[] = [];
+    const removals: number[] = []; // 不活躍、沒提到 mutual、或帳號已不存在的人
+    const finishedCountries: { code: string; startedAt: number }[] = [];
+    let pagesRead = 0;
+    let scanned = 0;
     let stopped: unknown = null;
 
     try {
-        for (let i = 0; i < RANKING_PAGES_PER_RUN && state.nextPage !== null; i++) {
-            await throttle();
-            const page = state.nextPage;
-            const res = await apiGet<RankingResponse>(
-                `/rankings/${env.SCAN_MODE}/performance?country=${env.SCAN_COUNTRY}&page=${page}`,
-                token,
-            );
-            res.ranking.forEach((entry, index) => {
-                if (!entry.user.is_active) {
-                    inactiveIds.push(entry.user.id);
-                    return;
+        // ---------- 開始新的一輪（上一輪的待掃清單要先掃完；而且距離上一輪開始至少 7 天） ----------
+        if (state.countries.length === 0 && state.pending.length === 0 && startedAt - state.passStartedAt >= MIN_PASS_INTERVAL_MS) {
+            state.countries = await loadCountries(env, token, request);
+            Object.assign(state, { countryIndex: 0, nextPage: 1, countryStartedAt: startedAt, passStartedAt: startedAt, passScanned: 0 });
+        }
+
+        // 還有國家要讀、或待掃清單還有人，就繼續（一輪剛結束時，最後一頁的人還在待掃清單裡）
+        while (canRequest() && (state.countries.length > 0 || state.pending.length > 0)) {
+            // ---------- 待掃清單空了：讀下一頁排行榜 ----------
+            if (state.pending.length === 0) {
+                const country = state.countries[state.countryIndex]!;
+                await request();
+                const res = await apiGet<RankingResponse>(
+                    `/rankings/${env.SCAN_MODE}/performance?country=${country}&page=${state.nextPage}`,
+                    token,
+                );
+                pagesRead++;
+                for (const entry of res.ranking) {
+                    if (entry.user.is_active) state.pending.push(entry.user.id);
+                    else removals.push(entry.user.id);
                 }
-                rankingRows.push({
-                    id: entry.user.id,
-                    username: entry.user.username,
-                    avatarUrl: entry.user.avatar_url,
-                    countryCode: entry.user.country_code,
-                    globalRank: entry.global_rank,
-                    countryRank: (page - 1) * RANKING_PAGE_SIZE + index + 1,
-                    pp: entry.pp,
-                    lastVisit: parseTime(entry.user.last_visit),
-                    pmFriendsOnly: entry.user.pm_friends_only,
-                });
-            });
-            state.nextPage = res.cursor?.page ?? null;
-            if (state.nextPage === null) state.nextPassAt = now + RANKING_REFRESH_MS;
+
+                if (res.cursor?.page) {
+                    state.nextPage = res.cursor.page;
+                } else {
+                    // 這個國家讀完了（這一頁剩下的人還在待掃清單，會繼續掃完）
+                    finishedCountries.push({ code: country, startedAt: state.countryStartedAt });
+                    state.countryIndex++;
+                    state.nextPage = 1;
+                    state.countryStartedAt = Date.now();
+                    if (state.countryIndex >= state.countries.length) {
+                        state.lastPassScanned = state.passScanned + state.pending.length;
+                        state.countries = []; // 一輪結束（待掃清單仍會繼續掃完）
+                    }
+                }
+                continue;
+            }
+
+            // ---------- 掃描一個人的個人頁面 ----------
+            const id = state.pending[0]!;
+            await request();
+            try {
+                const user = await apiGet<OsuUser>(`/users/${id}/${env.SCAN_MODE}?key=id`, token);
+                const detection = detectMutualMention(user.page?.raw ?? '');
+                if (user.is_active && detection.mentioned) {
+                    upserts.push({
+                        id,
+                        username: user.username,
+                        avatarUrl: user.avatar_url,
+                        countryCode: user.country_code,
+                        globalRank: user.statistics?.global_rank ?? null,
+                        countryRank: user.statistics?.country_rank ?? null,
+                        pp: user.statistics?.pp ?? null,
+                        followerCount: user.follower_count,
+                        lastVisit: parseTime(user.last_visit),
+                        pmFriendsOnly: user.pm_friends_only,
+                        count: detection.count,
+                        snippets: JSON.stringify(detection.snippets),
+                    });
+                } else {
+                    removals.push(id);
+                }
+            } catch (err) {
+                // 404：帳號被停權或刪除，當作沒提到；其他錯誤（429、osu! 掛了）先停，這個人留在清單下次再掃
+                if (!(err instanceof OsuApiError && err.status === 404)) throw err;
+                removals.push(id);
+            }
+            state.pending.shift();
+            state.passScanned++;
+            scanned++;
         }
     } catch (err) {
         stopped = err;
     }
 
-    if (inactiveIds.length > 0) {
-        // 已經存過、但現在變成不活躍的人：連同掃描結果一起刪掉（沒存過的人刪了也沒影響）
-        await db
-            .prepare('DELETE FROM players WHERE id IN (SELECT value FROM json_each(?1))')
-            .bind(JSON.stringify(inactiveIds))
-            .run();
+    // ---------- 寫入資料庫：全部放在同一個 batch（交易），避免只寫了一半 ----------
+    const now = Date.now();
+    const statements: D1PreparedStatement[] = [];
+
+    if (removals.length > 0) {
+        // 沒存過的人刪了也不會產生寫入
+        statements.push(db.prepare('DELETE FROM players WHERE id IN (SELECT value FROM json_each(?1))').bind(JSON.stringify(removals)));
     }
 
-    if (rankingRows.length > 0) {
-        // scan_due_at 的規則：新玩家（或重新回到名單的人）立刻到期；已經排好下次掃描時間的人保持不變。
-        // "WHERE true" 是 SQLite 的語法要求：INSERT ... SELECT 搭配 ON CONFLICT 時，避免解析歧義。
-        await db
-            .prepare(
-                `INSERT INTO players (id, username, avatar_url, country_code, global_rank, country_rank, pp,
-                                      last_visit, pm_friends_only, ranking_seen_at, scan_due_at)
-                 SELECT r.value ->> 'id', r.value ->> 'username', r.value ->> 'avatarUrl', r.value ->> 'countryCode',
-                        r.value ->> 'globalRank', r.value ->> 'countryRank', r.value ->> 'pp', r.value ->> 'lastVisit',
-                        r.value ->> 'pmFriendsOnly', ?2, ?2
-                 FROM json_each(?1) AS r WHERE true
-                 ON CONFLICT (id) DO UPDATE SET
-                     username = excluded.username,
-                     avatar_url = excluded.avatar_url,
-                     country_code = excluded.country_code,
-                     global_rank = excluded.global_rank,
-                     country_rank = excluded.country_rank,
-                     pp = excluded.pp,
-                     last_visit = excluded.last_visit,
-                     pm_friends_only = excluded.pm_friends_only,
-                     ranking_seen_at = excluded.ranking_seen_at,
-                     scan_due_at = COALESCE(players.scan_due_at, excluded.scan_due_at)`,
-            )
-            .bind(JSON.stringify(rankingRows), now)
-            .run();
+    if (upserts.length > 0) {
+        statements.push(
+            db
+                .prepare(
+                    `INSERT INTO players (id, username, avatar_url, country_code, global_rank, country_rank, pp, follower_count,
+                                          last_visit, pm_friends_only, scanned_at, mutual_level, mutual_score, mutual_snippet)
+                     SELECT p.value ->> 'id', p.value ->> 'username', p.value ->> 'avatarUrl', p.value ->> 'countryCode',
+                            p.value ->> 'globalRank', p.value ->> 'countryRank', p.value ->> 'pp', p.value ->> 'followerCount',
+                            p.value ->> 'lastVisit', p.value ->> 'pmFriendsOnly', ?2, 'mention', p.value ->> 'count', p.value ->> 'snippets'
+                     FROM json_each(?1) AS p WHERE true
+                     ON CONFLICT (id) DO UPDATE SET
+                         username = excluded.username,
+                         avatar_url = excluded.avatar_url,
+                         country_code = excluded.country_code,
+                         global_rank = excluded.global_rank,
+                         country_rank = excluded.country_rank,
+                         pp = excluded.pp,
+                         follower_count = excluded.follower_count,
+                         last_visit = excluded.last_visit,
+                         pm_friends_only = excluded.pm_friends_only,
+                         scanned_at = excluded.scanned_at,
+                         mutual_level = excluded.mutual_level,
+                         mutual_score = excluded.mutual_score,
+                         mutual_snippet = excluded.mutual_snippet`,
+                )
+                .bind(JSON.stringify(upserts), now),
+        );
     }
 
-    // ---------- B. 掃描個人頁面 ----------
-    const scanRows: ScanRow[] = [];
-
-    if (!stopped) {
-        const { results: due } = await db
-            .prepare('SELECT id FROM players WHERE scan_due_at <= ?1 ORDER BY scan_due_at LIMIT ?2')
-            .bind(now, SCAN_BATCH)
-            .all<{ id: number }>();
-
-        for (const { id } of due) {
-            try {
-                await throttle();
-                const user = await apiGet<OsuUser>(`/users/${id}/${env.SCAN_MODE}?key=id`, token);
-                const detection = detectMutualMention(user.page?.raw ?? '');
-                scanRows.push({
-                    id,
-                    followerCount: user.follower_count ?? null,
-                    lastVisit: parseTime(user.last_visit),
-                    pmFriendsOnly: user.pm_friends_only,
-                    level: detection.mentioned ? 'mention' : 'none',
-                    score: detection.count,
-                    snippet: detection.mentioned ? JSON.stringify(detection.snippets) : null,
-                });
-            } catch (err) {
-                if (err instanceof OsuApiError && err.status === 404) {
-                    // 帳號被停權或刪除：記成掃過、沒有訊號，14 天後再看一次
-                    scanRows.push({ id, followerCount: null, lastVisit: null, pmFriendsOnly: null, level: 'none', score: 0, snippet: null });
-                    continue;
-                }
-                stopped = err; // 429（太頻繁）或 osu! 掛了：這輪先停，下一分鐘再試
-                break;
-            }
-        }
+    for (const { code, startedAt: countryStartedAt } of finishedCountries) {
+        // 這個國家這一輪沒再掃到的人：排名掉出前 1 萬名、換了國家等。
+        // 還在待掃清單裡的人也算「看到了」，不能刪（他們稍後才會掃）。
+        statements.push(
+            db
+                .prepare(
+                    `DELETE FROM players
+                     WHERE country_code = ?1 AND scanned_at < ?2
+                       AND id NOT IN (SELECT value FROM json_each(?3))`,
+                )
+                .bind(code, countryStartedAt, JSON.stringify(state.pending)),
+        );
     }
 
-    if (scanRows.length > 0) {
-        // COALESCE：API 沒給的值（null）就保留資料庫裡原本的值
-        await db
-            .prepare(
-                `UPDATE players SET
-                     follower_count = COALESCE(s.value ->> 'followerCount', follower_count),
-                     last_visit = COALESCE(s.value ->> 'lastVisit', last_visit),
-                     pm_friends_only = COALESCE(s.value ->> 'pmFriendsOnly', pm_friends_only),
-                     mutual_level = s.value ->> 'level',
-                     mutual_score = s.value ->> 'score',
-                     mutual_snippet = s.value ->> 'snippet',
-                     scanned_at = ?2,
-                     scan_due_at = ?3
-                 FROM json_each(?1) AS s
-                 WHERE players.id = s.value ->> 'id'`,
-            )
-            .bind(JSON.stringify(scanRows), now, now + RESCAN_AFTER_MS)
-            .run();
-    }
+    statements.push(writeKv(db, STATE_KEY, state));
+    await db.batch(statements);
 
-    // ---------- 統計（每小時算一次，避免每分鐘都把整張表讀一遍） ----------
+    // ---------- 統計（每小時算一次：只數提到 mutual 的人，走部分索引） ----------
     if (now - state.statsUpdatedAt >= STATS_REFRESH_MS) {
-        const stats = await db
+        const { results } = await db
             .prepare(
-                `SELECT COUNT(*) AS players,
-                        COUNT(scanned_at) AS scanned,
-                        COALESCE(SUM(mutual_level = 'mention'), 0) AS mentioned
-                 FROM players`,
+                `SELECT country_code AS code, COUNT(*) AS count FROM players
+                 WHERE mutual_level = 'mention' AND country_code IS NOT NULL
+                 GROUP BY country_code ORDER BY count DESC`,
             )
-            .first<Omit<CrawlerStats, 'updatedAt'>>();
-        await writeKv(db, STATS_KEY, { ...stats, updatedAt: now }).run();
+            .all<{ code: string; count: number }>();
+        const stats: CrawlerStats = { mentioned: results.reduce((sum, r) => sum + r.count, 0), byCountry: results, updatedAt: now };
         state.statsUpdatedAt = now;
+        await db.batch([writeKv(db, STATS_KEY, stats), writeKv(db, STATE_KEY, state)]);
     }
 
-    await writeKv(db, STATE_KEY, state).run();
-
-    const summary = `排行榜 ${rankingRows.length} 人（略過不活躍 ${inactiveIds.length} 人）、掃描 ${scanRows.length} 人、下一頁 ${state.nextPage ?? '（本輪完成）'}`;
-    if (stopped) {
-        console.error(`掃描中斷（${summary}）:`, stopped);
-    }
+    const where = state.countries.length > 0 ? `${state.countries[state.countryIndex]} 第 ${state.nextPage} 頁` : '本輪完成，等待下一輪';
+    const summary = `讀排行榜 ${pagesRead} 頁、掃描 ${scanned} 人（提到 mutual ${upserts.length} 人）、移除 ${removals.length} 筆、目前進度：${where}、待掃 ${state.pending.length} 人`;
+    if (stopped) console.error(`掃描中斷（${summary}）:`, stopped);
     return summary;
 }
 
 export async function getCrawlerProgress(db: D1Database) {
-    const [state, stats] = await Promise.all([readKv<CrawlerState>(db, STATE_KEY), readKv<CrawlerStats>(db, STATS_KEY)]);
-    return { rankingNextPage: state?.nextPage ?? 1, stats };
+    const [state, stats] = await Promise.all([readKv<Partial<CrawlerState>>(db, STATE_KEY), readKv<CrawlerStats>(db, STATS_KEY)]);
+    const countries = state?.countries ?? [];
+    return {
+        countriesInPass: countries.length,
+        currentCountry: countries[state?.countryIndex ?? 0] ?? null,
+        passScanned: state?.passScanned ?? 0,
+        lastPassScanned: state?.lastPassScanned ?? null,
+        mentioned: stats?.mentioned ?? null,
+        byCountry: stats?.byCountry ?? [],
+    };
 }
