@@ -21,9 +21,9 @@ export const fetchMe = () => fetch('/api/me').then(res => parse<MeResponse>(res)
 
 export const logout = () => fetch('/api/auth/logout', { method: 'POST' }).then(res => parse<{ ok: true }>(res));
 
-/** country = 'all' 代表所有國家 */
-export const fetchCandidates = (offset: number, country: string) =>
-    fetch(`/api/candidates?offset=${offset}${country === 'all' ? '' : `&country=${country}`}`).then(res =>
+/** page 從 1 開始；country = 'all' 代表所有國家 */
+export const fetchCandidates = (page: number, country: string) =>
+    fetch(`/api/candidates?page=${page}${country === 'all' ? '' : `&country=${country}`}`).then(res =>
         parse<CandidatesResponse>(res),
     );
 

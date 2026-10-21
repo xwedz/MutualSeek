@@ -7,10 +7,26 @@ import { CandidateCard } from './CandidateCard';
 import { CountrySelect } from './CountrySelect';
 import { ChevronIcon, InfoIcon, PencilIcon, Spinner } from './Icons';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Pagination } from './Pagination';
 
 const DEFAULT_TEMPLATE = "Hi {name}! Saw on your profile that you're open to mutuals, just added you :)";
 const LEAVE_MS = 250; // 跟 index.css 的 fade-out 時間一致
 const COPIED_MS = 1600;
+
+/** 從網址讀頁碼（?page=3）；沒有或格式不對就是第 1 頁。 */
+function readPageFromUrl(): number {
+    const page = Math.floor(Number(new URLSearchParams(window.location.search).get('page')));
+    return Number.isFinite(page) && page >= 1 ? page : 1;
+}
+
+/** 把頁碼寫回網址。第 1 頁不寫參數，網址保持乾淨。 */
+function writePageToUrl(page: number, mode: 'push' | 'replace') {
+    const url = new URL(window.location.href);
+    if (page === 1) url.searchParams.delete('page');
+    else url.searchParams.set('page', String(page));
+    if (mode === 'push') window.history.pushState(null, '', url);
+    else window.history.replaceState(null, '', url);
+}
 
 interface Props {
     loggedIn: boolean;
@@ -28,6 +44,10 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
     const [readFirstSeen, setReadFirstSeen] = useLocalStorage('notice.readFirst', false);
     const [dialogFor, setDialogFor] = useState<Candidate | null>(null);
 
+    // 頁碼放在網址（?page=3），重新整理或按瀏覽器的「上一頁」都會回到同一頁
+    const [page, setPage] = useState(readPageFromUrl);
+    const listRef = useRef<HTMLUListElement>(null);
+
     const [candidates, setCandidates] = useState<Candidate[]>([]);
     const [hasMore, setHasMore] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -39,30 +59,66 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
     // 只採用最後一次請求的結果，避免舊結果晚到蓋掉新結果（例如快速切換國家時）
     const requestId = useRef(0);
 
-    const load = useCallback(
-        async (offset: number) => {
-            const id = ++requestId.current;
-            setLoading(true);
-            setError(null);
-            // 換國家（從頭載入）時先清空，不要讓上一個國家的人留在畫面上
-            if (offset === 0) setCandidates([]);
-            try {
-                const data = await fetchCandidates(offset, country);
-                if (id !== requestId.current) return;
-                setCandidates(prev => (offset === 0 ? data.candidates : [...prev, ...data.candidates]));
-                setHasMore(data.hasMore);
-            } catch (err) {
-                if (id === requestId.current) setError(err instanceof Error ? err.message : 'Could not load players.');
-            } finally {
-                if (id === requestId.current) setLoading(false);
-            }
-        },
-        [country],
-    );
+    // 換頁時不先清空列表：舊的卡片會稍微變暗表示載入中，新的到了再淡入取代，畫面不會突然空掉
+    const load = useCallback(async () => {
+        const id = ++requestId.current;
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await fetchCandidates(page, country);
+            if (id !== requestId.current) return;
+            setCandidates(data.candidates);
+            setHasMore(data.hasMore);
+        } catch (err) {
+            if (id === requestId.current) setError(err instanceof Error ? err.message : 'Could not load players.');
+        } finally {
+            if (id === requestId.current) setLoading(false);
+        }
+    }, [page, country]);
 
     useEffect(() => {
-        load(0);
+        load();
     }, [load]);
+
+    // 按瀏覽器的「上一頁 / 下一頁」時，網址的頁碼變了，同步回畫面
+    useEffect(() => {
+        const onPopState = () => setPage(readPageFromUrl());
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, []);
+
+    // 換頁後要不要捲回列表頂端：等新的卡片畫好之後才決定。
+    // 如果在按下的瞬間就捲，新資料到了之後頁面高度會改變（例如最後一頁比較短），瀏覽器會自己再調整，
+    // 每次停的位置就會不一樣。
+    const scrollAfterLoad = useRef(false);
+
+    useEffect(() => {
+        if (loading || !scrollAfterLoad.current) return;
+        scrollAfterLoad.current = false;
+        const list = listRef.current;
+        if (!list) return;
+        const MARGIN = 16;
+        const top = list.getBoundingClientRect().top;
+        // 列表頂端還在畫面裡就不動；被捲出畫面了才捲回去，而且每次都停在同一個位置（離畫面頂端 16px）
+        if (top >= MARGIN) return;
+        // 減少動態時直接跳過去，不做捲動動畫
+        const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        window.scrollTo({ top: window.scrollY + top - MARGIN, behavior: smooth ? 'smooth' : 'auto' });
+    }, [loading, candidates]);
+
+    /** 換頁：更新網址（留下瀏覽紀錄），新的卡片畫好後再視情況捲回列表頂端。 */
+    function goToPage(next: number) {
+        scrollAfterLoad.current = true;
+        setPage(next);
+        writePageToUrl(next, 'push');
+    }
+
+    /** 換國家：回到第 1 頁（取代目前的瀏覽紀錄，不然按「上一頁」會回到別的國家的頁碼）。 */
+    function changeCountry(next: string) {
+        setChosenCountry(next);
+        setPage(1);
+        writePageToUrl(1, 'replace');
+    }
 
     const skippedSet = new Set(skipped);
     const visible = candidates.filter(c => !skippedSet.has(c.id));
@@ -105,7 +161,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
             </p>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
-                <CountrySelect value={country} countries={(stats?.byCountry ?? []).map(c => c.code)} onChange={setChosenCountry} />
+                <CountrySelect value={country} countries={(stats?.byCountry ?? []).map(c => c.code)} onChange={changeCountry} />
                 <button
                     type="button"
                     onClick={() => setEditingTemplate(v => !v)}
@@ -166,7 +222,11 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
 
             {error && <p className="mt-4 animate-fade-in rounded-xl border border-bad/40 bg-bad/10 px-4 py-3 text-sm text-bad">{error}</p>}
 
-            <ul className="mt-4 grid gap-3">
+            <ul
+                ref={listRef}
+                aria-busy={loading}
+                className={`mt-4 grid gap-3 transition-opacity duration-300 ${loading && candidates.length > 0 ? 'opacity-50' : ''}`}
+            >
                 {visible.map((c, i) => (
                     <CandidateCard
                         key={c.id}
@@ -182,16 +242,34 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
                 ))}
             </ul>
 
-            {loading && (
+            {/* 第一次載入（還沒有任何卡片）才顯示轉圈；換頁時改成讓舊卡片變暗 */}
+            {loading && candidates.length === 0 && (
                 <div className="mt-6 flex animate-fade-in justify-center text-muted">
                     <Spinner size={22} />
                 </div>
             )}
 
-            {!loading && !error && visible.length === 0 && (
+            {!loading && !error && candidates.length === 0 && page === 1 && (
                 <p className="mt-6 animate-fade-in rounded-2xl border border-dashed border-line px-4 py-10 text-center text-muted">
                     {country === 'all' ? 'No one to show yet.' : `No one from ${countryName(country)} yet.`} The scanner goes
                     through every country in turn, a few players every minute, so check back later.
+                </p>
+            )}
+
+            {/* 網址的頁碼超過最後一頁（例如舊的書籤）*/}
+            {!loading && !error && candidates.length === 0 && page > 1 && (
+                <p className="mt-6 animate-fade-in rounded-2xl border border-dashed border-line px-4 py-10 text-center text-muted">
+                    There's no one on this page.{' '}
+                    <button type="button" onClick={() => goToPage(1)} className="text-pink transition-colors hover:text-pink-2">
+                        Back to page 1
+                    </button>
+                </p>
+            )}
+
+            {/* 這一頁的人全部被略過了 */}
+            {!loading && candidates.length > 0 && visible.length === 0 && (
+                <p className="mt-6 animate-fade-in rounded-2xl border border-dashed border-line px-4 py-8 text-center text-muted">
+                    You skipped everyone on this page.
                 </p>
             )}
 
@@ -216,17 +294,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
                 </ConfirmDialog>
             )}
 
-            {!loading && hasMore && (
-                <div className="mt-5 flex justify-center">
-                    <button
-                        type="button"
-                        onClick={() => load(candidates.length)}
-                        className="animate-fade-in rounded-xl border border-line px-5 py-2.5 text-sm font-medium transition-colors hover:border-pink/50"
-                    >
-                        Load more
-                    </button>
-                </div>
-            )}
+            {(page > 1 || hasMore) && <Pagination page={page} hasNext={hasMore} disabled={loading} onChange={goToPage} />}
         </section>
     );
 }

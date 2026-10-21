@@ -15,7 +15,8 @@ import { endSession, getSessionUser, type SessionUser } from './session';
 const app = new Hono<AppEnv>();
 
 const SYNC_COOLDOWN_MS = 60 * 1000; // 同一個人一分鐘內重複按「同步」，直接回傳現有資料
-const PAGE_SIZE = 30;
+// 候選人列表每頁幾個人：每張卡片都有摘錄要讀，5 個人大約剛好一個畫面，方便專心看完再換頁
+const PAGE_SIZE = 5;
 // osu! 好友上限（官方 supporter 頁面：supporter 從 500 提高到 1000）
 const FRIEND_LIMIT = { normal: 500, supporter: 1000 };
 
@@ -64,7 +65,9 @@ app.get('/api/me', async c => {
  */
 app.get('/api/candidates', async c => {
     const user = await getSessionUser(c);
-    const offset = Math.max(Number(c.req.query('offset')) || 0, 0);
+    // page 從 1 開始；格式不對就當第 1 頁。上限只是防止有人傳超大的數字
+    const page = Math.min(Math.max(Math.floor(Number(c.req.query('page'))) || 1, 1), 100_000);
+    const offset = (page - 1) * PAGE_SIZE;
     const country = c.req.query('country')?.toUpperCase() ?? '';
     const byCountry = /^[A-Z]{2}$/.test(country);
 

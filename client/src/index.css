@@ -67,6 +67,8 @@
 }
 
 html {
+    /* 永遠保留捲軸的寬度：內容變短、捲軸消失時（例如最後一頁只有 3 個人），置中的內容才不會往右偏移 */
+    scrollbar-gutter: stable;
     background: var(--color-bg);
     color: var(--color-ink);
     font-family: var(--font-sans);
