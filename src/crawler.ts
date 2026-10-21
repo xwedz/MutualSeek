@@ -123,12 +123,22 @@ async function loadCountries(env: Env, get: ApiGet, request: () => Promise<void>
         .map(e => e.code);
 }
 
+/** SCAN_PAUSE = "now"，或指定的國家這一輪已經讀完、最後一頁的人也掃完了 → 暫停 */
+function isPaused(env: Env, state: CrawlerState): boolean {
+    const code = env.SCAN_PAUSE?.trim().toUpperCase();
+    if (!code) return false;
+    if (code === 'NOW') return true;
+    const index = state.countries.indexOf(code);
+    return index !== -1 && index < state.countryIndex && state.pending.length === 0;
+}
+
 export async function runCrawler(env: Env): Promise<string> {
     const db = env.DB;
     const startedAt = Date.now();
     // 舊版的狀態格式不同（沒有 countries 欄位），直接當作重新開始
     const saved = await readKv<Partial<CrawlerState>>(db, STATE_KEY);
     const state: CrawlerState = saved && Array.isArray(saved.countries) ? { ...initialState(), ...saved } : initialState();
+    if (isPaused(env, state)) return `已暫停（SCAN_PAUSE = ${env.SCAN_PAUSE}）`;
     let token = await getAppToken(env);
     let tokenRenewed = false;
 
@@ -167,7 +177,7 @@ export async function runCrawler(env: Env): Promise<string> {
         }
 
         // 還有國家要讀、或待掃清單還有人，就繼續（一輪剛結束時，最後一頁的人還在待掃清單裡）
-        while (canRequest() && (state.countries.length > 0 || state.pending.length > 0)) {
+        while (canRequest() && (state.countries.length > 0 || state.pending.length > 0) && !isPaused(env, state)) {
             // ---------- 待掃清單空了：讀下一頁排行榜 ----------
             if (state.pending.length === 0) {
                 const country = state.countries[state.countryIndex]!;

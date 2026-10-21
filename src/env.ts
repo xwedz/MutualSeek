@@ -19,6 +19,10 @@ export interface Env {
     // "all" = 所有國家（依活躍玩家數從多到少）；也可以填逗號分隔的國家代碼，例如 "TW,JP"
     SCAN_COUNTRIES: string;
     SCAN_MODE: string;
+    // 暫停背景掃描（不再呼叫 osu! API）："now" = 立刻暫停；
+    // 國家代碼（例如 "US"）= 這一輪讀完這個國家、待掃清單也掃完後暫停；
+    // 留空 = 不暫停。清空後重新部署就會從暫停的地方繼續。
+    SCAN_PAUSE?: string;
 }
 
 /** Hono 用的型別參數：讓 c.env 帶有上面的型別。 */
