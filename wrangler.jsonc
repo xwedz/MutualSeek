@@ -1,6 +1,7 @@
 {
     "$schema": "node_modules/wrangler/config-schema.json",
-    "name": "osu-mutual-tool",
+    // Worker 名稱，也決定 workers.dev 的網址（mutualseek.<帳號子網域>.workers.dev）
+    "name": "mutualseek",
     "main": "src/index.ts",
     "compatibility_date": "2026-10-01",
 
@@ -16,9 +17,8 @@
         {
             "binding": "DB",
             "database_name": "osu-mutual-tool",
-            // 執行 `npx wrangler d1 create osu-mutual-tool` 後，把它印出的 database_id 填在這裡。
-            // 本機開發（--local）不會用到這個值，所以先留著佔位也能跑。
-            "database_id": "00000000-0000-0000-0000-000000000000",
+            // `npx wrangler d1 create osu-mutual-tool` 建立的線上資料庫（本機開發 --local 不會用到這個值）
+            "database_id": "09bc6e1a-8245-49b0-a547-ae85e6d477ce",
             "migrations_dir": "migrations"
         }
     ],
@@ -34,6 +34,10 @@
 
     // 背景掃描：每分鐘跑一次，每次只做一小批（見 src/crawler.ts 的說明）。
     "triggers": { "crons": ["* * * * *"] },
+
+    // Workers Logs：在 Cloudflare 儀表板查看每次執行的紀錄與錯誤（例如超過 CPU 時間限制）。
+    // 免費方案每天 20 萬筆、保留 3 天；背景掃描每天約 1,440 次執行，用量很小。
+    "observability": { "enabled": true, "head_sampling_rate": 1 },
 
     "vars": {
         // 掃描範圍："all" = 所有國家（依活躍玩家數從多到少逐國掃描），

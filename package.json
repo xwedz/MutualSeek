@@ -1,7 +1,7 @@
 {
   "name": "osu-mutual-tool",
   "version": "0.1.0",
-  "description": "Find osu! players looking for mutuals and track who followed you back (Cloudflare Workers + D1)",
+  "description": "MutualSeek: find osu! players looking for mutuals and track who followed you back (Cloudflare Workers + D1)",
   "private": true,
   "type": "module",
   "scripts": {
