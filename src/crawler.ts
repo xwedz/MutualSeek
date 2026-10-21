@@ -273,11 +273,13 @@ export async function runCrawler(env: Env): Promise<string> {
     for (const { code, startedAt: countryStartedAt } of finishedCountries) {
         // 這個國家這一輪沒再掃到的人：排名掉出前 1 萬名、換了國家等。
         // 還在待掃清單裡的人也算「看到了」，不能刪（他們稍後才會掃）。
+        // mutual_level = 'mention' 不會改變結果（表裡只有這種人），但少了它 SQLite 無法使用部分索引，
+        // 會整張表從頭讀到尾；一輪最後幾天一天要讀完上百個小國家，可能逼近每天 500 萬列的讀取上限。
         statements.push(
             db
                 .prepare(
                     `DELETE FROM players
-                     WHERE country_code = ?1 AND scanned_at < ?2
+                     WHERE mutual_level = 'mention' AND country_code = ?1 AND scanned_at < ?2
                        AND id NOT IN (SELECT value FROM json_each(?3))`,
                 )
                 .bind(code, countryStartedAt, JSON.stringify(state.pending)),
