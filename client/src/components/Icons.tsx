@@ -23,6 +23,14 @@ function Icon({ size = 16, children, ...props }: IconProps) {
     );
 }
 
+/** 標題旁的標誌：兩個交疊的圈代表「互相」，一白一粉 */
+export const LogoMark = ({ size = 22 }: { size?: number }) => (
+    <svg width={(size * 40) / 26} height={size} viewBox="0 0 40 26" fill="none" strokeWidth={2.6} aria-hidden="true" className="shrink-0">
+        <circle cx="13" cy="13" r="10" className="stroke-ink" />
+        <circle cx="27" cy="13" r="10" className="stroke-pink" />
+    </svg>
+);
+
 export const ExternalIcon = (p: IconProps) => (
     <Icon {...p}>
         <path d="M14 4h6v6" />

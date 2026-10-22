@@ -3,7 +3,7 @@ import { fetchMe, fetchStats, logout } from './api';
 import { Avatar } from './components/Avatar';
 import { CandidatesView } from './components/CandidatesView';
 import { Footer } from './components/Footer';
-import { LogoutIcon } from './components/Icons';
+import { LogoMark, LogoutIcon } from './components/Icons';
 import { TrackingView } from './components/TrackingView';
 import type { MeResponse, StatsResponse } from './types';
 
@@ -62,10 +62,11 @@ export default function App() {
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
             <header className="flex items-center justify-between gap-3 pt-6 pb-2">
                 <div>
-                    <h1 className="text-xl font-bold tracking-tight">
-                        MutualSeek
-                    </h1>
-                    <p className="text-sm text-muted">Find osu! players looking for mutuals, and see who followed you back.</p>
+                    <div className="flex items-center gap-2.5">
+                        <LogoMark />
+                        <h1 className="text-xl font-bold tracking-tight">MutualSeek</h1>
+                    </div>
+                    <p className="mt-0.5 text-sm text-muted">Find osu! players looking for mutuals, and see who followed you back.</p>
                 </div>
                 {/* me 還沒載入時先留空，避免「Log in」按鈕閃一下又變成頭像 */}
                 {me && (
