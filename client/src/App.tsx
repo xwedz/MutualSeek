@@ -63,7 +63,7 @@ export default function App() {
             <header className="flex items-center justify-between gap-3 pt-6 pb-2">
                 <div>
                     <h1 className="text-xl font-bold tracking-tight">
-                        Mutual<span className="text-pink">Seek</span>
+                        MutualSeek
                     </h1>
                     <p className="text-sm text-muted">Find osu! players looking for mutuals, and see who followed you back.</p>
                 </div>
