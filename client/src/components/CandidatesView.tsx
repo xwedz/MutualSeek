@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { fetchCandidates, profileUrl } from '../api';
 import { countryName } from '../countries';
-import type { Candidate, StatsResponse } from '../types';
+import type { Candidate, CandidateSort, StatsResponse } from '../types';
 import { useLocalStorage } from '../useLocalStorage';
 import { CandidateCard } from './CandidateCard';
 import { CountrySelect } from './CountrySelect';
 import { ChevronIcon, InfoIcon, PencilIcon, Spinner } from './Icons';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Pagination } from './Pagination';
+import { SortSelect } from './SortSelect';
+
+const SORTS: readonly CandidateSort[] = ['recent', 'rank', 'followers'];
 
 const DEFAULT_TEMPLATE = "Hi {name}! Saw on your profile that you're open to mutuals, just added you :)";
 const LEAVE_MS = 250; // 跟 index.css 的 fade-out 時間一致
@@ -38,6 +41,9 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
     // 使用者自己選過的國家（記在瀏覽器）；沒選過就用自己的國家，沒登入就看所有國家
     const [chosenCountry, setChosenCountry] = useLocalStorage<string | null>('filter.country', null);
     const country = chosenCountry ?? defaultCountry ?? 'all';
+    // 排序也記在瀏覽器；存的值不認得（例如之後拿掉了某個選項）就退回預設
+    const [storedSort, setSort] = useLocalStorage<CandidateSort>('filter.sort', 'recent');
+    const sort = SORTS.includes(storedSort) ? storedSort : 'recent';
     const [template, setTemplate] = useLocalStorage('dm.template', DEFAULT_TEMPLATE);
     const [skipped, setSkipped] = useLocalStorage<number[]>('skipped', []);
     // 使用者是否已經看過「請先讀對方寫了什麼」的說明視窗
@@ -65,7 +71,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
         setLoading(true);
         setError(null);
         try {
-            const data = await fetchCandidates(page, country);
+            const data = await fetchCandidates(page, country, sort);
             if (id !== requestId.current) return;
             setCandidates(data.candidates);
             setHasMore(data.hasMore);
@@ -74,7 +80,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
         } finally {
             if (id === requestId.current) setLoading(false);
         }
-    }, [page, country]);
+    }, [page, country, sort]);
 
     useEffect(() => {
         load();
@@ -116,6 +122,13 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
     /** 換國家：回到第 1 頁（取代目前的瀏覽紀錄，不然按「上一頁」會回到別的國家的頁碼）。 */
     function changeCountry(next: string) {
         setChosenCountry(next);
+        setPage(1);
+        writePageToUrl(1, 'replace');
+    }
+
+    /** 換排序：同樣回到第 1 頁。 */
+    function changeSort(next: CandidateSort) {
+        setSort(next);
         setPage(1);
         writePageToUrl(1, 'replace');
     }
@@ -162,6 +175,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
                 <CountrySelect value={country} countries={(stats?.byCountry ?? []).map(c => c.code)} onChange={changeCountry} />
+                <SortSelect value={sort} onChange={changeSort} />
                 <button
                     type="button"
                     onClick={() => setEditingTemplate(v => !v)}

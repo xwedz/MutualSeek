@@ -60,9 +60,19 @@ app.get('/api/me', async c => {
  * 候選人列表：個人頁面有提到 mutual 的玩家（是否真的想要 mutual，由使用者讀摘錄後自己判斷）。
  * players 表裡只有活躍的玩家（見 crawler.ts），所以這裡不用再篩選最後上線時間。
  * 登入後會排除「已經在你好友名單裡」的人（以最近一次同步為準）與你自己。
- * 排序：最近上線的優先（SQLite 的 DESC 會把 null 排在最後，也就是隱藏上線狀態的人）。
- *   country=TW 只看某個國家（走 players_mentions_country 索引）；不帶或格式不對就是所有國家（走 players_mentions 索引）
+ * 排序（sort=）：每種都有對應的索引（migrations 0002、0003、0005），DESC 會把 null 排在最後；
+ *   最後再依 id 排，同分（例如粉絲數相同）時順序固定，換頁才不會重複或漏掉人。
+ *   recent    最近上線的優先（預設；隱藏上線狀態的人排最後）
+ *   rank      排名最前的優先（用 pp 由高到低，順序跟排名相同）
+ *   followers 粉絲最多的優先
+ * country=TW 只看某個國家（走「國家在前」的索引）；不帶或格式不對就是所有國家
  */
+const CANDIDATE_ORDER = {
+    recent: 'p.last_visit DESC, p.id DESC',
+    rank: 'p.pp DESC, p.id DESC',
+    followers: 'p.follower_count DESC, p.id DESC',
+} as const;
+
 app.get('/api/candidates', async c => {
     const user = await getSessionUser(c);
     // page 從 1 開始；格式不對就當第 1 頁。上限只是防止有人傳超大的數字
@@ -70,6 +80,12 @@ app.get('/api/candidates', async c => {
     const offset = (page - 1) * PAGE_SIZE;
     const country = c.req.query('country')?.toUpperCase() ?? '';
     const byCountry = /^[A-Z]{2}$/.test(country);
+    // 只接受清單裡的值（SQL 的 ORDER BY 不能用參數，所以絕不能直接拼接使用者傳來的字串）
+    const sortParam = c.req.query('sort') ?? '';
+    // 用 Object.hasOwn 而不是 in：in 也會比對到繼承來的屬性（例如 sort=constructor）
+    const order = Object.hasOwn(CANDIDATE_ORDER, sortParam)
+        ? CANDIDATE_ORDER[sortParam as keyof typeof CANDIDATE_ORDER]
+        : CANDIDATE_ORDER.recent;
 
     const { results } = await c.env.DB.prepare(
         `SELECT p.id, p.username, p.avatar_url, p.country_code, p.global_rank, p.country_rank, p.pp, p.last_visit,
@@ -80,7 +96,7 @@ app.get('/api/candidates', async c => {
            ${byCountry ? 'AND p.country_code = ?4' : ''}
            AND f.target_id IS NULL
            AND p.id != ?1
-         ORDER BY p.last_visit DESC
+         ORDER BY ${order}
          LIMIT ?2 OFFSET ?3`,
     )
         // 只有依國家篩選時，SQL 裡才有 ?4，所以也只在這時候帶第 4 個參數

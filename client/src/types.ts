@@ -42,6 +42,9 @@ export interface CandidatesResponse {
     hasMore: boolean;
 }
 
+/** 候選人列表的排序（對照 src/index.ts 的 CANDIDATE_ORDER） */
+export type CandidateSort = 'recent' | 'rank' | 'followers';
+
 export interface Friend {
     target_id: number;
     username: string;

@@ -1,6 +1,6 @@
 // 所有跟後端溝通的地方都集中在這裡，元件本身不直接碰 fetch。
 
-import type { CandidatesResponse, FriendsResponse, MeResponse, StatsResponse } from './types';
+import type { CandidateSort, CandidatesResponse, FriendsResponse, MeResponse, StatsResponse } from './types';
 
 export class ApiError extends Error {
     constructor(message: string, public status: number, public relogin = false) {
@@ -22,8 +22,8 @@ export const fetchMe = () => fetch('/api/me').then(res => parse<MeResponse>(res)
 export const logout = () => fetch('/api/auth/logout', { method: 'POST' }).then(res => parse<{ ok: true }>(res));
 
 /** page 從 1 開始；country = 'all' 代表所有國家 */
-export const fetchCandidates = (page: number, country: string) =>
-    fetch(`/api/candidates?page=${page}${country === 'all' ? '' : `&country=${country}`}`).then(res =>
+export const fetchCandidates = (page: number, country: string, sort: CandidateSort) =>
+    fetch(`/api/candidates?page=${page}&sort=${sort}${country === 'all' ? '' : `&country=${country}`}`).then(res =>
         parse<CandidatesResponse>(res),
     );
 
