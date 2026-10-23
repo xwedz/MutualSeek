@@ -11,7 +11,7 @@ export function Footer({ stats }: { stats: StatsResponse | null }) {
             {stats && (
                 <p className="animate-fade-in">
                     Scanning active {MODE_NAMES[stats.mode] ?? stats.mode} players in {scope} (top 10,000 per country, refreshed about
-                    weekly). {formatNumber(stats.passScanned)} profiles checked in the current round
+                    monthly). {formatNumber(stats.passScanned)} profiles checked in the current round
                     {stats.mentioned !== null && <>, {formatNumber(stats.mentioned)} players mention mutuals</>}.
                 </p>
             )}

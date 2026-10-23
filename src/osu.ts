@@ -31,6 +31,7 @@ export interface OsuUserCompact {
 
 export interface OsuUser extends OsuUserCompact {
     follower_count: number;
+    has_supported: boolean; // 現在或過去曾經是 supporter（排行榜的資料沒有這個欄位）
     page: { html: string; raw: string };
     // /users/{id}/{mode} 會帶上該模式的統計（排名、pp），掃描時順便更新，排行榜就不用每次重寫這些欄位
     statistics?: { global_rank: number | null; country_rank: number | null; pp: number | null };
