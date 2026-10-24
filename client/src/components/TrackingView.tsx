@@ -105,13 +105,13 @@ export function TrackingView({ onDeleted }: { onDeleted: () => void }) {
                         )}
                     </Section>
 
-                    <Section title="Recent changes">
+                    <Collapsible title="Recent changes">
                         {data.events.length === 0 ? (
                             <Empty>Nothing yet. Changes show up here after your next sync.</Empty>
                         ) : (
                             data.events.map((e, i) => <EventItem key={`${e.target_id}-${e.type}-${e.at}`} event={e} index={i} now={now} />)
                         )}
-                    </Section>
+                    </Collapsible>
 
                     {oneSided.length > 0 && <OneSided friends={oneSided} now={now} />}
                 </div>
@@ -276,32 +276,46 @@ function EventItem({ event: e, index, now }: { event: FriendEvent; index: number
     );
 }
 
-/** People added before tracking started who never followed back. Collapsed by default so the page doesn't get too long. */
+/** People added before tracking started who never followed back */
 function OneSided({ friends, now }: { friends: Friend[]; now: number }) {
+    return (
+        <Collapsible title={`Not following you back (${friends.length})`} hint="Added before tracking started, so we don't know when.">
+            {friends.map((f, i) => (
+                <FriendItem key={f.target_id} friend={f} index={i} now={now} />
+            ))}
+        </Collapsible>
+    );
+}
+
+/**
+ * A section that starts collapsed so the page doesn't get too long; the arrow opens it.
+ * The list is only rendered once first opened (long lists cost nothing until then), and stays rendered afterwards so
+ * closing can animate the height instead of the content vanishing at once.
+ */
+function Collapsible({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
     const [open, setOpen] = useState(false);
+    const [opened, setOpened] = useState(false);
     return (
         <div className="mt-8">
             <button
                 type="button"
-                onClick={() => setOpen(v => !v)}
+                onClick={() => {
+                    setOpen(v => !v);
+                    setOpened(true);
+                }}
                 aria-expanded={open}
                 className="flex w-full items-center justify-between gap-3 text-left"
             >
                 <span>
-                    <span className="text-lg font-semibold">Not following you back ({friends.length})</span>
-                    <span className="block text-sm text-muted">Added before tracking started, so we don't know when.</span>
+                    <span className="text-lg font-semibold">{title}</span>
+                    {hint && <span className="block text-sm text-muted">{hint}</span>}
                 </span>
                 <ChevronIcon size={18} className={`shrink-0 text-muted transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
             </button>
             <div className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out-expo ${open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-                <div className="overflow-hidden">
-                    {open && (
-                        <ul className="mt-3 grid gap-2">
-                            {friends.map((f, i) => (
-                                <FriendItem key={f.target_id} friend={f} index={i} now={now} />
-                            ))}
-                        </ul>
-                    )}
+                {/* inert while closed: the hidden links can't be reached with Tab */}
+                <div className="overflow-hidden" inert={!open}>
+                    {opened && <ul className="mt-3 grid gap-2">{children}</ul>}
                 </div>
             </div>
         </div>
