@@ -7,6 +7,7 @@ import { CandidateCard } from './CandidateCard';
 import { CountrySelect } from './CountrySelect';
 import { ChevronIcon, InfoIcon, PencilIcon, Spinner } from './Icons';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ListingButton } from './ListingButton';
 import { Pagination } from './Pagination';
 import { SortSelect } from './SortSelect';
 
@@ -35,9 +36,11 @@ interface Props {
     loggedIn: boolean;
     defaultCountry: string | null; // 登入者自己的國家
     stats: StatsResponse | null;
+    optedOut: boolean; // 登入者選了「Don't list me」
+    onSetListing: (listed: boolean) => Promise<void>;
 }
 
-export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
+export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSetListing }: Props) {
     // 使用者自己選過的國家（記在瀏覽器）；沒選過就用自己的國家，沒登入就看所有國家
     const [chosenCountry, setChosenCountry] = useLocalStorage<string | null>('filter.country', null);
     const country = chosenCountry ?? defaultCountry ?? 'all';
@@ -186,6 +189,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats }: Props) {
                     Message template
                     <ChevronIcon size={14} className={`transition-transform duration-300 ${editingTemplate ? 'rotate-180' : ''}`} />
                 </button>
+                <ListingButton loggedIn={loggedIn} optedOut={optedOut} onSetListing={onSetListing} />
             </div>
 
             {/* 用 grid-rows 0fr → 1fr 的技巧做高度展開動畫，不用量測元素高度 */}

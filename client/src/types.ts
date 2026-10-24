@@ -15,6 +15,7 @@ export interface AccountInfo {
 export interface MeResponse {
     user: SessionUser | null;
     account?: AccountInfo;
+    optedOut?: boolean; // 選了「Don't list me」
 }
 
 /** 摘錄的一小段文字；hit = true 的部分是命中的關鍵字（對照 src/detect.ts） */

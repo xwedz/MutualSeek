@@ -136,6 +136,23 @@ export const InfoIcon = (p: IconProps) => (
     </Icon>
 );
 
+export const QuestionIcon = (p: IconProps) => (
+    <Icon {...p}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.4" />
+        <path d="M12 17h.01" />
+    </Icon>
+);
+
+export const EyeOffIcon = (p: IconProps) => (
+    <Icon {...p}>
+        <path d="M10.7 5.1A9.8 9.8 0 0 1 12 5c5 0 9 5 9 7a8.6 8.6 0 0 1-2.1 3.1" />
+        <path d="M6.6 6.6C4.3 8 3 10.5 3 12c0 2 4 7 9 7a9.4 9.4 0 0 0 5.4-1.6" />
+        <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+        <path d="m3 3 18 18" />
+    </Icon>
+);
+
 export const Spinner =({ size = 16 }: { size?: number }) => (
     <Icon size={size} className="animate-spin-slow">
         <path d="M12 3a9 9 0 1 0 9 9" />

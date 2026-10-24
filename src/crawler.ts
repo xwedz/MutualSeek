@@ -310,7 +310,9 @@ export async function runCrawler(env: Env): Promise<string> {
                      SELECT p.value ->> 'id', p.value ->> 'username', p.value ->> 'avatarUrl', p.value ->> 'countryCode',
                             p.value ->> 'globalRank', p.value ->> 'countryRank', p.value ->> 'pp', p.value ->> 'followerCount',
                             p.value ->> 'lastVisit', p.value ->> 'pmFriendsOnly', ?2, 'mention', p.value ->> 'count', p.value ->> 'snippets'
-                     FROM json_each(?1) AS p WHERE true
+                     FROM json_each(?1) AS p
+                     -- 選了「Don't list me」的人不存（這個 WHERE 也剛好解決 SQLite 對 INSERT…SELECT…ON CONFLICT 的語法限制）
+                     WHERE (p.value ->> 'id') NOT IN (SELECT id FROM opt_outs)
                      ON CONFLICT (id) DO UPDATE SET
                          username = excluded.username,
                          avatar_url = excluded.avatar_url,

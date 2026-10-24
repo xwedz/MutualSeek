@@ -1,13 +1,17 @@
-import { useEffect, useState } from 'react';
-import { fetchMe, fetchStats, logout } from './api';
+import { useEffect, useState, type MouseEvent } from 'react';
+import { fetchMe, fetchStats, logout, setListing } from './api';
 import { Avatar } from './components/Avatar';
 import { CandidatesView } from './components/CandidatesView';
+import { FaqView } from './components/FaqView';
 import { Footer } from './components/Footer';
-import { LogoMark, LogoutIcon } from './components/Icons';
+import { LogoMark, LogoutIcon, QuestionIcon } from './components/Icons';
 import { TrackingView } from './components/TrackingView';
 import type { MeResponse, StatsResponse } from './types';
 
 type Tab = 'find' | 'track';
+// FAQ 是獨立的頁面（/faq，可以直接分享連結）；其他都在首頁，用分頁籤切換
+type View = 'main' | 'faq';
+const viewFromPath = (): View => (window.location.pathname === '/faq' ? 'faq' : 'main');
 
 const LOGIN_ERRORS: Record<string, string> = {
     denied: 'Login was cancelled on osu!.',
@@ -18,6 +22,7 @@ const LOGIN_ERRORS: Record<string, string> = {
 export default function App() {
     const [me, setMe] = useState<MeResponse | null>(null);
     const [tab, setTab] = useState<Tab>('find');
+    const [view, setView] = useState<View>(viewFromPath);
     const [notice, setNotice] = useState<{ text: string; tone: 'error' | 'success' } | null>(null);
     // 掃描進度與各國人數：頁尾和國家選單都要用，在這裡抓一次再往下傳
     const [stats, setStats] = useState<StatsResponse | null>(null);
@@ -38,7 +43,39 @@ export default function App() {
         }
     }, []);
 
+    // 瀏覽器的「上一頁 / 下一頁」在首頁和 FAQ 之間切換時，畫面跟著網址走
+    useEffect(() => {
+        const onPopState = () => setView(viewFromPath());
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, []);
+
+    useEffect(() => {
+        document.title = view === 'faq' ? 'FAQ – MutualSeek' : 'MutualSeek – find osu! mutuals';
+    }, [view]);
+
     const user = me?.user ?? null;
+
+    /** 「Don't list me」：FAQ 和 Find people 都用這一個，兩邊顯示的狀態才會一致 */
+    async function updateListing(listed: boolean) {
+        const { optedOut } = await setListing(listed);
+        setMe(prev => (prev ? { ...prev, optedOut } : prev));
+    }
+
+    function openFaq(event: MouseEvent<HTMLAnchorElement>) {
+        event.preventDefault(); // 不重新載入整個網站，只切換畫面
+        if (view === 'faq') return;
+        window.history.pushState(null, '', '/faq');
+        setView('faq');
+    }
+
+    function selectTab(next: Tab) {
+        if (view === 'faq') {
+            window.history.pushState(null, '', '/');
+            setView('main');
+        }
+        setTab(next);
+    }
 
     // 資料刪除後：後端已經清掉登入狀態，這裡只要更新畫面
     function handleDeleted() {
@@ -109,31 +146,63 @@ export default function App() {
             )}
 
             <nav className="relative mt-5 flex border-b border-line" aria-label="Sections">
-                {tabs.map(t => (
-                    <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => setTab(t.id)}
-                        aria-current={tab === t.id ? 'page' : undefined}
-                        className={`relative flex-1 py-3 text-sm font-medium transition-colors duration-300 sm:flex-none sm:px-5 ${
-                            tab === t.id ? 'text-ink' : 'text-muted hover:text-ink'
-                        }`}
-                    >
-                        {t.label}
-                        <span
-                            aria-hidden="true"
-                            className={`absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-pink transition-opacity duration-300 ${
-                                tab === t.id ? 'opacity-100' : 'opacity-0'
+                {tabs.map(t => {
+                    const active = view === 'main' && tab === t.id;
+                    return (
+                        <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => selectTab(t.id)}
+                            aria-current={active ? 'page' : undefined}
+                            className={`relative flex-1 py-3 text-sm font-medium transition-colors duration-300 sm:flex-none sm:px-5 ${
+                                active ? 'text-ink' : 'text-muted hover:text-ink'
                             }`}
-                        />
-                    </button>
-                ))}
+                        >
+                            {t.label}
+                            <span
+                                aria-hidden="true"
+                                className={`absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-pink transition-opacity duration-300 ${
+                                    active ? 'opacity-100' : 'opacity-0'
+                                }`}
+                            />
+                        </button>
+                    );
+                })}
+                {/* FAQ 是另一個頁面，不是第三個分頁：放在最右邊、顏色較淡、加圖示，跟分頁籤區分開 */}
+                <a
+                    href="/faq"
+                    onClick={openFaq}
+                    aria-current={view === 'faq' ? 'page' : undefined}
+                    className={`relative ml-auto inline-flex items-center gap-1.5 px-2 py-3 text-sm transition-colors duration-300 sm:px-3 ${
+                        view === 'faq' ? 'text-ink' : 'text-muted hover:text-ink'
+                    }`}
+                >
+                    <QuestionIcon size={15} />
+                    FAQ
+                    <span
+                        aria-hidden="true"
+                        className={`absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-pink transition-opacity duration-300 ${
+                            view === 'faq' ? 'opacity-100' : 'opacity-0'
+                        }`}
+                    />
+                </a>
             </nav>
 
             {/* key 換了就會重新掛載，觸發淡入，切換分頁不會突然跳 */}
-            <main key={tab} className="mt-6 animate-fade-up">
-                {tab === 'find' && <CandidatesView loggedIn={Boolean(user)} defaultCountry={user?.countryCode ?? null} stats={stats} />}
-                {tab === 'track' &&
+            <main key={view === 'faq' ? 'faq' : tab} className="mt-6 animate-fade-up">
+                {view === 'faq' && (
+                    <FaqView loggedIn={Boolean(user)} optedOut={me?.optedOut ?? false} onSetListing={updateListing} />
+                )}
+                {view === 'main' && tab === 'find' && (
+                    <CandidatesView
+                        loggedIn={Boolean(user)}
+                        defaultCountry={user?.countryCode ?? null}
+                        stats={stats}
+                        optedOut={me?.optedOut ?? false}
+                        onSetListing={updateListing}
+                    />
+                )}
+                {view === 'main' && tab === 'track' &&
                     (user ? (
                         <TrackingView onDeleted={handleDeleted} />
                     ) : (

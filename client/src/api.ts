@@ -31,6 +31,14 @@ export const fetchFriends = () => fetch('/api/friends').then(res => parse<Friend
 
 export const syncFriends = () => fetch('/api/friends/sync', { method: 'POST' }).then(res => parse<FriendsResponse>(res));
 
+/** 「Don't list me」：listed = false 從候選人列表移除自己，true 取消 */
+export const setListing = (listed: boolean) =>
+    fetch('/api/listing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listed }),
+    }).then(res => parse<{ optedOut: boolean }>(res));
+
 export const deleteMyData = () => fetch('/api/account/delete', { method: 'POST' }).then(res => parse<{ ok: true }>(res));
 
 export const fetchStats =() => fetch('/api/stats').then(res => parse<StatsResponse>(res));

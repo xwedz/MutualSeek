@@ -48,12 +48,40 @@ const accountJson = (row: AccountRow) => ({
     friendLimit: row.is_supporter ? FRIEND_LIMIT.supporter : FRIEND_LIMIT.normal,
 });
 
+async function isOptedOut(c: Context<AppEnv>, osuUserId: number) {
+    return Boolean(await c.env.DB.prepare('SELECT 1 FROM opt_outs WHERE id = ?').bind(osuUserId).first());
+}
+
 /** 目前登入的使用者（沒登入回傳 null）。資料庫裡找不到帳號時也當作沒登入。 */
 app.get('/api/me', async c => {
     const user = await getSessionUser(c);
     const account = user && (await loadAccount(c, user));
     if (!user || !account) return c.json({ user: null });
-    return c.json({ user, account: accountJson(account) });
+    return c.json({ user, account: accountJson(account), optedOut: await isOptedOut(c, user.osuUserId) });
+});
+
+/**
+ * 「Don't list me」：{ listed: false } 立刻從候選人列表移除，之後的掃描也不會再存；{ listed: true } 取消。
+ * 取消後不會立刻出現，要等下一輪掃描掃到時才會重新列出（這裡沒有對方個人頁面的資料可以補回去）。
+ */
+app.post('/api/listing', async c => {
+    const user = await getSessionUser(c);
+    if (!user) return c.json({ error: 'Please log in first.' }, 401);
+    const body = await c.req.json<{ listed?: unknown }>().catch(() => ({}) as { listed?: unknown });
+    if (typeof body.listed !== 'boolean') return c.json({ error: 'Invalid request.' }, 400);
+
+    if (body.listed) {
+        await c.env.DB.prepare('DELETE FROM opt_outs WHERE id = ?').bind(user.osuUserId).run();
+    } else {
+        await c.env.DB.batch([
+            c.env.DB.prepare('INSERT INTO opt_outs (id, created_at) VALUES (?1, ?2) ON CONFLICT (id) DO NOTHING').bind(
+                user.osuUserId,
+                Date.now(),
+            ),
+            c.env.DB.prepare('DELETE FROM players WHERE id = ?').bind(user.osuUserId),
+        ]);
+    }
+    return c.json({ optedOut: !body.listed });
 });
 
 /**

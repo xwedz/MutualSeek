@@ -28,6 +28,10 @@ const redirectUri = (c: { env: AppEnv['Bindings']; req: { url: string } }) =>
 
 const auth = new Hono<AppEnv>();
 
+// 登入後要回到哪一頁（?return=faq）。只接受清單裡的值：
+// 如果接受任意網址，別人就能做出「看起來是 MutualSeek 的登入連結」，登入後卻把人導去其他網站（open redirect）。
+const RETURN_PATHS: Record<string, string> = { faq: '/faq' };
+
 auth.get('/login', async c => {
     if (!c.env.OSU_CLIENT_ID) {
         return c.json({ error: 'Login is not configured on the server' }, 500);
@@ -35,7 +39,8 @@ auth.get('/login', async c => {
     // state 是防 CSRF 的隨機值：導去 osu! 前先存在 cookie，導回來時比對，
     // 確保這次授權是我們自己發起的，而不是別人塞給使用者的連結。
     const state = toBase64Url(crypto.getRandomValues(new Uint8Array(16)));
-    await setSealedCookie(c, STATE_COOKIE, 'state', { state }, STATE_TTL_MS);
+    const returnTo = RETURN_PATHS[c.req.query('return') ?? ''] ?? '/';
+    await setSealedCookie(c, STATE_COOKIE, 'state', { state, returnTo }, STATE_TTL_MS);
 
     const params = new URLSearchParams({
         client_id: c.env.OSU_CLIENT_ID,
@@ -53,7 +58,9 @@ auth.get('/callback', async c => {
     clearCookie(c, STATE_COOKIE);
 
     const frontend = c.env.FRONTEND_URL || '';
-    const fail = (reason: string) => c.redirect(`${frontend}/?login=${reason}`);
+    // 再檢查一次：cookie 雖然有簽章，但只認清單裡的路徑
+    const returnTo = Object.values(RETURN_PATHS).includes(saved?.returnTo as string) ? (saved?.returnTo as string) : '/';
+    const fail = (reason: string) => c.redirect(`${frontend}${returnTo}?login=${reason}`);
 
     if (error) return fail('denied'); // 使用者在授權頁按了拒絕
     if (!code || !saved || saved.state !== state) return fail('invalid');
@@ -73,7 +80,7 @@ auth.get('/callback', async c => {
             avatarUrl: me.avatar_url ?? null,
             countryCode: me.country_code ?? null,
         });
-        return c.redirect(`${frontend}/`);
+        return c.redirect(`${frontend}${returnTo}`);
     } catch (err) {
         console.error('osu! 登入失敗:', err);
         return fail('error');
