@@ -36,7 +36,9 @@ export function ListingButton({ loggedIn, optedOut, onSetListing }: Props) {
                 type="button"
                 onClick={() => (loggedIn && optedOut ? save(true) : setConfirming(true))}
                 disabled={saving}
-                className="inline-flex items-center gap-1.5 rounded-xl px-2 py-2 text-sm text-muted transition-colors hover:text-ink disabled:opacity-60"
+                className={`inline-flex items-center gap-1.5 rounded-xl px-2 py-2 text-sm transition-colors disabled:opacity-60 ${
+                    loggedIn && optedOut ? 'text-muted hover:text-ink' : 'text-bad/80 hover:text-bad'
+                }`}
             >
                 {saving ? <Spinner size={14} /> : <EyeOffIcon size={14} />}
                 {/* A new key remounts and fades in, so the label never jumps */}
@@ -51,6 +53,7 @@ export function ListingButton({ loggedIn, optedOut, onSetListing }: Props) {
                     <ConfirmDialog
                         title="Remove yourself from the list?"
                         confirmLabel="Don't list me"
+                        danger
                         onConfirm={() => save(false)}
                         onClose={() => setConfirming(false)}
                     >

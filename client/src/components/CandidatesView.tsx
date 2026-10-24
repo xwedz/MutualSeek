@@ -16,6 +16,7 @@ const SORTS: readonly CandidateSort[] = ['recent', 'rank', 'followers'];
 const DEFAULT_TEMPLATE = "Hi {name}! Saw on your profile that you're open to mutuals, just added you :)";
 const LEAVE_MS = 250; // matches the fade-out duration in index.css
 const COPIED_MS = 1600;
+const HIGHLIGHT = 'font-semibold text-pink'; // key phrases in the read-first reminders
 
 /** Reads the page number from the URL (?page=3); missing or malformed means page 1. */
 function readPageFromUrl(): number {
@@ -168,11 +169,12 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
     return (
         <section>
             {/* A permanent reminder: the tool only finds players who *mention* mutuals; whether they want them is for the user to read and judge */}
-            <p className="flex items-start gap-2.5 rounded-xl border border-pink/25 bg-pink/5 px-4 py-3 text-sm text-ink/90">
-                <InfoIcon size={16} className="mt-0.5 shrink-0 text-pink" />
+            <p className="flex items-start gap-2.5 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-ink/90">
+                <InfoIcon size={16} className="mt-0.5 shrink-0 text-muted" />
                 <span>
-                    These players <span className="font-semibold">mention</span> mutuals on their profile. Read what they wrote before
-                    adding them: some mention mutuals only to say no.
+                    These players <span className={HIGHLIGHT}>mention mutuals</span> on their profile.{' '}
+                    <span className={HIGHLIGHT}>Read what they wrote</span> before adding them: some mention mutuals{' '}
+                    <span className={HIGHLIGHT}>only to say no</span>.
                 </span>
             </p>
 
@@ -305,10 +307,13 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
                     onClose={() => setDialogFor(null)}
                 >
                     <p>
-                        This list shows players whose profile <span className="font-semibold text-pink">mentions</span> mutuals. It can't
-                        tell whether they actually want them. Some people mention mutuals only to say no.
+                        This list shows players whose profile <span className={HIGHLIGHT}>mentions mutuals</span>. It can't tell whether
+                        they actually want them. Some people mention mutuals <span className={HIGHLIGHT}>only to say no</span>.
                     </p>
-                    <p>Please read what they wrote yourself before adding or messaging them, so you don't bother anyone who isn't looking.</p>
+                    <p>
+                        <span className={HIGHLIGHT}>Please read</span> what they wrote yourself before adding or messaging them, so you{' '}
+                        <span className={HIGHLIGHT}>don't bother anyone who isn't looking</span>.
+                    </p>
                 </ConfirmDialog>
             )}
 

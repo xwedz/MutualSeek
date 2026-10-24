@@ -193,10 +193,11 @@ function ListingControl({ loggedIn, optedOut, onSetListing }: Props) {
         }
     }
 
+    // Same colours as "Delete my data" on the Follow-backs page
     return (
-        <div className="rounded-xl border border-line bg-bg/60 p-3">
+        <div className="rounded-xl border border-bad/25 p-3">
             {/* A new key remounts and fades in, so the status text never jumps */}
-            <p key={String(optedOut)} className="animate-fade-in text-ink">
+            <p key={String(optedOut)} className="animate-fade-in text-muted">
                 {optedOut
                     ? "You won't be listed. If you undo this, you'll appear again after the next scan finds a mention on your profile."
                     : 'You can be listed if your profile mentions mutuals.'}
@@ -205,7 +206,9 @@ function ListingControl({ loggedIn, optedOut, onSetListing }: Props) {
                 type="button"
                 onClick={toggle}
                 disabled={saving}
-                className="mt-2.5 inline-flex items-center gap-2 rounded-xl border border-line px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-pink/50 disabled:opacity-60"
+                className={`mt-2.5 inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
+                    optedOut ? 'border-line text-ink hover:border-pink/50' : 'border-bad/50 text-bad hover:bg-bad/10'
+                }`}
             >
                 {saving && <Spinner size={14} />}
                 {optedOut ? 'List me again' : "Don't list me"}
