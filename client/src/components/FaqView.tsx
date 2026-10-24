@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronIcon, Spinner } from './Icons';
 
+/** The "Why do I need to log in?" question, linked from Find people before logging in */
+export const WHY_LOG_IN = 'why-log-in';
+
 interface Props {
     loggedIn: boolean;
     optedOut: boolean;
@@ -12,7 +15,24 @@ interface Props {
  * Keep the answers in line with how the site behaves: update them when the scan scope, frequency, keyword languages or stored data change.
  */
 export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
-    const items: { q: string; a: ReactNode }[] = [
+    // A slug gives the question a link (/faq#slug) that opens it on arrival
+    const items: { q: string; a: ReactNode; slug?: string }[] = [
+        {
+            q: 'Why do I need to log in?',
+            slug: WHY_LOG_IN,
+            a: (
+                <>
+                    <p>
+                        To protect the players on the list. Showing it only to logged-in osu! players keeps it from being browsed or collected
+                        anonymously, and makes it easier to stop anyone who misuses it.
+                    </p>
+                    <p>
+                        Logging in only lets the site see who you are and read your friend list. It can't add friends or send messages for you,
+                        and you can log out or delete your data at any time. See the questions below for exactly what it keeps.
+                    </p>
+                </>
+            ),
+        },
         {
             q: 'What is MutualSeek?',
             a: (
@@ -126,7 +146,7 @@ export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
             <h2 className="text-lg font-semibold">Frequently asked questions</h2>
             <ul className="mt-4 grid gap-2">
                 {items.map((item, i) => (
-                    <FaqItem key={i} id={`faq-${i}`} question={item.q}>
+                    <FaqItem key={i} id={`faq-${i}`} slug={item.slug} question={item.q}>
                         {item.a}
                     </FaqItem>
                 ))}
@@ -135,10 +155,11 @@ export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
     );
 }
 
-function FaqItem({ id, question, children }: { id: string; question: string; children: ReactNode }) {
-    const [open, setOpen] = useState(false);
+function FaqItem({ id, slug, question, children }: { id: string; slug?: string; question: string; children: ReactNode }) {
+    // Arriving through the question's link (e.g. "Why log in?" on Find people) opens it straight away
+    const [open, setOpen] = useState(() => slug !== undefined && window.location.hash === `#${slug}`);
     return (
-        <li className="rounded-2xl border border-line bg-surface">
+        <li id={slug} className="rounded-2xl border border-line bg-surface">
             <button
                 type="button"
                 onClick={() => setOpen(v => !v)}

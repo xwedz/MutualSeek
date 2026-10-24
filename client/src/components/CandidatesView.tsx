@@ -18,6 +18,20 @@ const LEAVE_MS = 250; // matches the fade-out duration in index.css
 const COPIED_MS = 1600;
 const HIGHLIGHT = 'font-semibold text-pink'; // key phrases in the read-first reminders
 
+/** A permanent reminder: the tool only finds players who *mention* mutuals; whether they want them is for the user to read and judge */
+export function ReadFirstHint() {
+    return (
+        <p className="flex items-start gap-2.5 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-ink/90">
+            <InfoIcon size={16} className="mt-0.5 shrink-0 text-muted" />
+            <span>
+                These players <span className={HIGHLIGHT}>mention mutuals</span> on their profile.{' '}
+                <span className={HIGHLIGHT}>Read what they wrote</span> before adding them: some mention mutuals{' '}
+                <span className={HIGHLIGHT}>only to say no</span>.
+            </span>
+        </p>
+    );
+}
+
 /** Reads the page number from the URL (?page=3); missing or malformed means page 1. */
 function readPageFromUrl(): number {
     const page = Math.floor(Number(new URLSearchParams(window.location.search).get('page')));
@@ -168,15 +182,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
 
     return (
         <section>
-            {/* A permanent reminder: the tool only finds players who *mention* mutuals; whether they want them is for the user to read and judge */}
-            <p className="flex items-start gap-2.5 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-ink/90">
-                <InfoIcon size={16} className="mt-0.5 shrink-0 text-muted" />
-                <span>
-                    These players <span className={HIGHLIGHT}>mention mutuals</span> on their profile.{' '}
-                    <span className={HIGHLIGHT}>Read what they wrote</span> before adding them: some mention mutuals{' '}
-                    <span className={HIGHLIGHT}>only to say no</span>.
-                </span>
-            </p>
+            <ReadFirstHint />
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
                 <CountrySelect value={country} countries={(stats?.byCountry ?? []).map(c => c.code)} onChange={changeCountry} />

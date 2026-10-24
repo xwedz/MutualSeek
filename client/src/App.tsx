@@ -2,9 +2,10 @@ import { useEffect, useState, type MouseEvent } from 'react';
 import { fetchMe, fetchStats, logout, setListing } from './api';
 import { Avatar } from './components/Avatar';
 import { CandidatesView } from './components/CandidatesView';
-import { FaqView } from './components/FaqView';
+import { FaqView, WHY_LOG_IN } from './components/FaqView';
 import { Footer } from './components/Footer';
 import { LogoMark, LogoutIcon, QuestionIcon } from './components/Icons';
+import { LockedCandidatesView } from './components/LockedCandidatesView';
 import { TrackingView } from './components/TrackingView';
 import type { MeResponse, StatsResponse } from './types';
 
@@ -62,11 +63,16 @@ export default function App() {
         setMe(prev => (prev ? { ...prev, optedOut } : prev));
     }
 
-    function openFaq(event: MouseEvent<HTMLAnchorElement>) {
-        event.preventDefault(); // switch views without reloading the site
-        if (view === 'faq') return;
-        window.history.pushState(null, '', '/faq');
+    /** Switch to the FAQ without reloading the site; a hash (#slug) opens that question */
+    function goToFaq(hash = '') {
+        if (view === 'faq' && window.location.hash === hash) return;
+        window.history.pushState(null, '', `/faq${hash}`);
         setView('faq');
+    }
+
+    function openFaq(event: MouseEvent<HTMLAnchorElement>) {
+        event.preventDefault();
+        goToFaq();
     }
 
     function selectTab(next: Tab) {
@@ -193,14 +199,21 @@ export default function App() {
                 {view === 'faq' && (
                     <FaqView loggedIn={Boolean(user)} optedOut={me?.optedOut ?? false} onSetListing={updateListing} />
                 )}
-                {view === 'main' && tab === 'find' && (
-                    <CandidatesView
-                        loggedIn={Boolean(user)}
-                        defaultCountry={user?.countryCode ?? null}
-                        stats={stats}
-                        optedOut={me?.optedOut ?? false}
-                        onSetListing={updateListing}
-                    />
+                {/* Waits for `me`, so a logged-in user never sees the logged-out view flash first */}
+                {view === 'main' && tab === 'find' && me && (
+                    <div className="animate-fade-in">
+                        {user ? (
+                            <CandidatesView
+                                loggedIn
+                                defaultCountry={user.countryCode}
+                                stats={stats}
+                                optedOut={me.optedOut ?? false}
+                                onSetListing={updateListing}
+                            />
+                        ) : (
+                            <LockedCandidatesView optedOut={false} onSetListing={updateListing} onWhyLogIn={() => goToFaq(`#${WHY_LOG_IN}`)} />
+                        )}
+                    </div>
                 )}
                 {view === 'main' && tab === 'track' &&
                     (user ? (
