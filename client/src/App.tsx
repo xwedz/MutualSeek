@@ -222,7 +222,7 @@ export default function App() {
                     ))}
             </main>
 
-            <Footer stats={stats} />
+            <Footer />
         </div>
     );
 }
