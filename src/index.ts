@@ -11,6 +11,7 @@ import type { Snippet } from './detect';
 import type { AppEnv, Env } from './env';
 import { syncFriends, type FriendRow } from './friends';
 import { endSession, getSessionUser, type SessionUser } from './session';
+import { ringStart } from './shuffle';
 
 const app = new Hono<AppEnv>();
 
@@ -102,18 +103,11 @@ app.post('/api/listing', async c => {
  * Candidates: players whose profile mentions mutuals (whether they actually want them is for the user to judge from
  * the excerpt). The players table only holds active players (see crawler.ts), so there's no last-visit filter here.
  * Requires login and accepted guidelines. Players already on your friend list (as of your last sync) and you yourself are excluded.
- * Sort (sort=): each order has a matching index (migrations 0002, 0003, 0005); DESC puts nulls last.
- *   Every order ends with id so ties (e.g. equal follower counts) keep a fixed order and pages never repeat or skip anyone.
- *   recent    most recently online first (default; players who hide their online status come last)
- *   rank      best rank first (pp, highest first, which gives the same order as rank)
- *   followers most followers first
- * country=TW limits the list to one country (using the country-first indexes); missing or malformed = all countries
+ * Order: shuffled, starting at the user's own point on the ring for today (see src/shuffle.ts).
+ * country=TW limits the list to one country (using the country-first index); missing or malformed = all countries
+ * active=1 only keeps players seen online in the last 7 days (players who hide their online status are left out)
  */
-const CANDIDATE_ORDER = {
-    recent: 'p.last_visit DESC, p.id DESC',
-    rank: 'p.pp DESC, p.id DESC',
-    followers: 'p.follower_count DESC, p.id DESC',
-} as const;
+const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 app.get('/api/candidates', async c => {
     // The list is only for logged-in users who accepted the guidelines, so it can't be browsed or collected anonymously.
@@ -128,31 +122,53 @@ app.get('/api/candidates', async c => {
     const offset = (page - 1) * PAGE_SIZE;
     const country = c.req.query('country')?.toUpperCase() ?? '';
     const byCountry = /^[A-Z]{2}$/.test(country);
-    // Only values from the list are accepted (ORDER BY can't be parameterised, so user input must never be spliced in)
-    const sortParam = c.req.query('sort') ?? '';
-    // Object.hasOwn rather than `in`: `in` also matches inherited properties (e.g. sort=constructor)
-    const order = Object.hasOwn(CANDIDATE_ORDER, sortParam)
-        ? CANDIDATE_ORDER[sortParam as keyof typeof CANDIDATE_ORDER]
-        : CANDIDATE_ORDER.recent;
+    const activeOnly = c.req.query('active') === '1';
+    const me = user.osuUserId;
+    const now = Date.now();
+    const start = ringStart(me, now);
+    // One extra row is fetched: if row PAGE_SIZE + 1 exists, there's a next page
+    const limit = PAGE_SIZE + 1;
+
+    // The ring is read in two halves: keys from the start point to the end, then from the beginning up to the start
+    // point. Each half is a range scan along the index, capped at the rows this page could need (offset + limit), so
+    // a page reads at most twice that many rows; the outer ORDER BY then only sorts those few. (A single
+    // "ORDER BY part, shuffle_key" over both halves is correct too, but SQLite reads and sorts every listed player for it.)
+    function half(part: 0 | 1, comparison: '>=' | '<') {
+        const params: (string | number)[] = [me];
+        let filters = '';
+        if (byCountry) {
+            filters += ' AND p.country_code = ?';
+            params.push(country);
+        }
+        if (activeOnly) {
+            filters += ' AND p.last_visit >= ?';
+            params.push(now - ACTIVE_WINDOW_MS);
+        }
+        params.push(me, start, offset + limit);
+        const sql = `SELECT * FROM (
+                SELECT p.id, p.username, p.avatar_url, p.country_code, p.global_rank, p.country_rank, p.pp, p.last_visit,
+                       p.pm_friends_only, p.follower_count, p.mutual_snippet, p.shuffle_key, ${part} AS part
+                FROM players AS p
+                LEFT JOIN friendships AS f ON f.account_id = ? AND f.target_id = p.id
+                WHERE p.mutual_level = 'mention'${filters}
+                  AND f.target_id IS NULL
+                  AND p.id != ?
+                  AND p.shuffle_key ${comparison} ?
+                ORDER BY p.shuffle_key, p.id
+                LIMIT ?)`;
+        return { sql, params };
+    }
+    const first = half(0, '>=');
+    const second = half(1, '<');
 
     const { results } = await c.env.DB.prepare(
-        `SELECT p.id, p.username, p.avatar_url, p.country_code, p.global_rank, p.country_rank, p.pp, p.last_visit,
-                p.pm_friends_only, p.follower_count, p.mutual_snippet
-         FROM players AS p
-         LEFT JOIN friendships AS f ON f.account_id = ?1 AND f.target_id = p.id
-         WHERE p.mutual_level = 'mention'
-           ${byCountry ? 'AND p.country_code = ?4' : ''}
-           AND f.target_id IS NULL
-           AND p.id != ?1
-         ORDER BY ${order}
-         LIMIT ?2 OFFSET ?3`,
+        `${first.sql} UNION ALL ${second.sql} ORDER BY part, shuffle_key, id LIMIT ? OFFSET ?`,
     )
-        // ?4 only exists in the SQL when filtering by country, so the fourth parameter is only bound then
-        .bind(...([user.osuUserId, PAGE_SIZE + 1, offset, ...(byCountry ? [country] : [])] as const))
+        .bind(...first.params, ...second.params, limit, offset)
         .all<Record<string, unknown> & { mutual_snippet: string | null }>();
 
-    // One extra row is fetched: if row PAGE_SIZE + 1 exists, there's a next page
-    const candidates = results.slice(0, PAGE_SIZE).map(({ mutual_snippet, ...row }) => ({
+    // part and shuffle_key are only for ordering
+    const candidates = results.slice(0, PAGE_SIZE).map(({ mutual_snippet, part, shuffle_key, ...row }) => ({
         ...row,
         snippets: parseSnippets(mutual_snippet),
     }));

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchCandidates } from '../api';
 import { countryName } from '../countries';
-import type { Candidate, CandidateSort, StatsResponse } from '../types';
+import type { Candidate, StatsResponse } from '../types';
 import { useLocalStorage } from '../useLocalStorage';
+import { ActiveToggle } from './ActiveToggle';
 import { CandidateCard } from './CandidateCard';
 import { CountrySelect } from './CountrySelect';
 import { ChevronIcon, InfoIcon, PencilIcon, Spinner } from './Icons';
@@ -10,9 +11,6 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { ListingButton } from './ListingButton';
 import { Pagination } from './Pagination';
 import { SkeletonCards } from './SkeletonCards';
-import { SortSelect } from './SortSelect';
-
-const SORTS: readonly CandidateSort[] = ['recent', 'rank', 'followers'];
 
 const DEFAULT_TEMPLATE = "Hi {name}! Saw on your profile that you're open to mutuals, just added you :)";
 const LEAVE_MS = 250; // matches the fade-out duration in index.css
@@ -62,9 +60,8 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
     // The country the user picked (remembered in the browser); otherwise their own country, or all countries when logged out
     const [chosenCountry, setChosenCountry] = useLocalStorage<string | null>('filter.country', null);
     const country = chosenCountry ?? defaultCountry ?? 'all';
-    // The sort is remembered too; an unknown stored value (e.g. an option removed later) falls back to the default
-    const [storedSort, setSort] = useLocalStorage<CandidateSort>('filter.sort', 'recent');
-    const sort = SORTS.includes(storedSort) ? storedSort : 'recent';
+    // "Online in the past week" is remembered too
+    const [activeOnly, setActiveOnly] = useLocalStorage('filter.active', false);
     const [template, setTemplate] = useLocalStorage('dm.template', DEFAULT_TEMPLATE);
     const [skipped, setSkipped] = useLocalStorage<number[]>('skipped', []);
 
@@ -89,7 +86,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
         setLoading(true);
         setError(null);
         try {
-            const data = await fetchCandidates(page, country, sort);
+            const data = await fetchCandidates(page, country, activeOnly);
             if (id !== requestId.current) return;
             setCandidates(data.candidates);
             setHasMore(data.hasMore);
@@ -98,7 +95,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
         } finally {
             if (id === requestId.current) setLoading(false);
         }
-    }, [page, country, sort]);
+    }, [page, country, activeOnly]);
 
     useEffect(() => {
         if (guidelinesAccepted) load();
@@ -144,9 +141,9 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
         writePageToUrl(1, 'replace');
     }
 
-    /** Change sort: also back to page 1. */
-    function changeSort(next: CandidateSort) {
-        setSort(next);
+    /** Toggle "Online in the past week": also back to page 1. */
+    function toggleActive() {
+        setActiveOnly(v => !v);
         setPage(1);
         writePageToUrl(1, 'replace');
     }
@@ -179,7 +176,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
                 <CountrySelect value={country} countries={(stats?.byCountry ?? []).map(c => c.code)} onChange={changeCountry} />
-                <SortSelect value={sort} onChange={changeSort} />
+                <ActiveToggle pressed={activeOnly} onToggle={toggleActive} />
                 <button
                     type="button"
                     onClick={() => setEditingTemplate(v => !v)}

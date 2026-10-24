@@ -1,6 +1,6 @@
 // Every call to the backend lives here; components never call fetch directly.
 
-import type { CandidateSort, CandidatesResponse, FriendsResponse, MeResponse, StatsResponse } from './types';
+import type { CandidatesResponse, FriendsResponse, MeResponse, StatsResponse } from './types';
 
 export class ApiError extends Error {
     constructor(message: string, public status: number, public relogin = false) {
@@ -22,8 +22,9 @@ export const fetchMe = () => fetch('/api/me').then(res => parse<MeResponse>(res)
 export const logout = () => fetch('/api/auth/logout', { method: 'POST' }).then(res => parse<{ ok: true }>(res));
 
 /** page starts at 1; country = 'all' means every country */
-export const fetchCandidates = (page: number, country: string, sort: CandidateSort) =>
-    fetch(`/api/candidates?page=${page}&sort=${sort}${country === 'all' ? '' : `&country=${country}`}`).then(res =>
+/** The order is shuffled on the server (src/shuffle.ts); activeOnly keeps players seen online in the last 7 days */
+export const fetchCandidates = (page: number, country: string, activeOnly: boolean) =>
+    fetch(`/api/candidates?page=${page}${country === 'all' ? '' : `&country=${country}`}${activeOnly ? '&active=1' : ''}`).then(res =>
         parse<CandidatesResponse>(res),
     );
 

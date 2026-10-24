@@ -62,6 +62,15 @@ export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
             ),
         },
         {
+            q: 'Why is the list in a random order?',
+            a: (
+                <p>
+                    So the same few players don't hear from everyone. The order changes every day. <b>Online in the past week</b> narrows it
+                    down to players seen online in the last 7 days (players who hide their online status are left out).
+                </p>
+            ),
+        },
+        {
             q: "Why isn't my country, or a certain player, listed?",
             a: (
                 <>

@@ -27,6 +27,7 @@
 
 import { detectMutualMention } from './detect';
 import type { Env } from './env';
+import { NEW_SHUFFLE_KEY_SQL } from './shuffle';
 import {
     apiGet,
     getAppToken,
@@ -311,11 +312,13 @@ export async function runCrawler(env: Env): Promise<string> {
         statements.push(
             db
                 .prepare(
+                    // shuffle_key is only set on insert (it's not in the UPDATE list below), so a player keeps their place in the shuffled order
                     `INSERT INTO players (id, username, avatar_url, country_code, global_rank, country_rank, pp, follower_count,
-                                          last_visit, pm_friends_only, scanned_at, mutual_level, mutual_score, mutual_snippet)
+                                          last_visit, pm_friends_only, scanned_at, mutual_level, mutual_score, mutual_snippet, shuffle_key)
                      SELECT p.value ->> 'id', p.value ->> 'username', p.value ->> 'avatarUrl', p.value ->> 'countryCode',
                             p.value ->> 'globalRank', p.value ->> 'countryRank', p.value ->> 'pp', p.value ->> 'followerCount',
-                            p.value ->> 'lastVisit', p.value ->> 'pmFriendsOnly', ?2, 'mention', p.value ->> 'count', p.value ->> 'snippets'
+                            p.value ->> 'lastVisit', p.value ->> 'pmFriendsOnly', ?2, 'mention', p.value ->> 'count', p.value ->> 'snippets',
+                            ${NEW_SHUFFLE_KEY_SQL}
                      FROM json_each(?1) AS p
                      -- Players who chose "Don't list me" are not stored (this WHERE also satisfies SQLite's parsing rule for INSERT…SELECT…ON CONFLICT)
                      WHERE (p.value ->> 'id') NOT IN (SELECT id FROM opt_outs)

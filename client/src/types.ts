@@ -44,8 +44,6 @@ export interface CandidatesResponse {
     hasMore: boolean;
 }
 
-/** Candidate list sort order (see CANDIDATE_ORDER in src/index.ts) */
-export type CandidateSort = 'recent' | 'rank' | 'followers';
 
 export interface Friend {
     target_id: number;

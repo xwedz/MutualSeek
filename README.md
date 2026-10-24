@@ -6,7 +6,7 @@ Many players write things like "add me for mutuals" or "I follow back" on their 
 
 ## Features
 
-- **Find people**: players whose profile mentions mutuals, with the matching part of their profile highlighted. Filter by country, sort by recent activity, rank or followers, and copy a message template to send on osu!. To protect the listed players, the list is only shown after logging in and accepting a few short guidelines (read what they wrote, one message is enough, be kind).
+- **Find people**: players whose profile mentions mutuals, with the matching part of their profile highlighted. Filter by country or by who was online in the past week, and copy a message template to send on osu!. The list is shuffled so the same few players aren't contacted by everyone (see below). To protect the listed players, the list is only shown after logging in and accepting a few short guidelines (read what they wrote, one message is enough, be kind).
 - **Follow-backs**: log in with osu! to see who added you back, who removed you, and who never did, by comparing your friend list between syncs.
 - **Don't list me**: any listed player can log in and remove themselves from the list. Future scans won't add them back.
 - **Read-only**: the site only asks for `identify` and `friends.read`. It can't add friends or send messages for you.
@@ -18,6 +18,8 @@ Many players write things like "add me for mutuals" or "I follow back" on their 
 **Detection.** `src/detect.ts` converts the profile's BBCode to plain text and looks for keywords in English, Chinese, Japanese and Korean (e.g. "mutual", "follow back", "互關", "相互フォロー", "맞팔"). It doesn't try to judge meaning: someone who writes "no mutuals" is listed too, and the excerpt shows exactly what they wrote so the user can decide.
 
 **What's stored.** Only players who mention mutuals are kept in the database, along with their public profile data (name, avatar, country, rank, pp, followers, last visit, the excerpt). Players who have never had osu!supporter can't create a profile page, so they're remembered by id and skipped in later passes.
+
+**Order.** With a fixed order, everyone would see the same few players at the top. Instead, each listed player gets a random key once, and the keys form a ring: every user starts reading at their own point (derived from their id and the date, so it's stable for a day) and wraps around at the end. The ring is read as two index range scans, so a page only reads the rows it needs (`src/shuffle.ts`, `/api/candidates`).
 
 **Follow-backs.** `/friends` (API version `20241022`) includes a `mutual` flag for every friend. Each sync compares the new list with the previous snapshot and records what changed.
 

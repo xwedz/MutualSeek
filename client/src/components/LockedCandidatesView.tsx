@@ -1,4 +1,5 @@
 import { useState, type MouseEvent } from 'react';
+import { ActiveToggle } from './ActiveToggle';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ReadFirstHint } from './CandidatesView';
 import { WHY_LOG_IN } from './FaqView';
@@ -40,10 +41,7 @@ export function LockedCandidatesView({ optedOut, onSetListing, onWhyLogIn }: Pro
                     All countries
                     <ChevronIcon size={14} className="text-muted" />
                 </button>
-                <button type="button" onClick={ask} className={`${CONTROL} text-ink`}>
-                    Recently online
-                    <ChevronIcon size={14} className="text-muted" />
-                </button>
+                <ActiveToggle pressed={false} onToggle={ask} />
                 <button type="button" onClick={ask} className={`${CONTROL} gap-1.5 bg-transparent text-muted hover:text-ink`}>
                     <PencilIcon size={14} />
                     Message template
