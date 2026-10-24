@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent } from 'react';
-import { fetchMe, fetchStats, logout, setListing } from './api';
+import { acceptGuidelines, fetchMe, fetchStats, logout, setListing } from './api';
 import { Avatar } from './components/Avatar';
 import { CandidatesView } from './components/CandidatesView';
 import { FaqView, WHY_LOG_IN } from './components/FaqView';
@@ -61,6 +61,15 @@ export default function App() {
     async function updateListing(listed: boolean) {
         const { optedOut } = await setListing(listed);
         setMe(prev => (prev ? { ...prev, optedOut } : prev));
+    }
+
+    /**
+     * "I understand" on the guidelines: the list shows right away and the server records it in the background.
+     * If saving fails, the only effect is seeing the guidelines again next time, so the list isn't held back for it.
+     */
+    function handleAcceptGuidelines() {
+        setMe(prev => (prev?.account ? { ...prev, account: { ...prev.account, guidelinesAccepted: true } } : prev));
+        acceptGuidelines().catch(() => {});
     }
 
     /** Switch to the FAQ without reloading the site; a hash (#slug) opens that question */
@@ -209,6 +218,8 @@ export default function App() {
                                 stats={stats}
                                 optedOut={me.optedOut ?? false}
                                 onSetListing={updateListing}
+                                guidelinesAccepted={me.account?.guidelinesAccepted ?? false}
+                                onAcceptGuidelines={handleAcceptGuidelines}
                             />
                         ) : (
                             <LockedCandidatesView optedOut={false} onSetListing={updateListing} onWhyLogIn={() => goToFaq(`#${WHY_LOG_IN}`)} />

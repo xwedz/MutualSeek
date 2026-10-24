@@ -1,4 +1,3 @@
-import type { MouseEvent } from 'react';
 import { profileUrl } from '../api';
 import { countryName } from '../countries';
 import { formatNumber, timeAgo } from '../format';
@@ -12,13 +11,11 @@ interface Props {
     leaving: boolean;
     copied: boolean;
     showCountry: boolean; // show the player's country when "All countries" is selected
-    /** Called when "Open profile" or the name is clicked; the parent may preventDefault to show an explanation first */
-    onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
     onCopy: () => void;
     onSkip: () => void;
 }
 
-export function CandidateCard({ candidate: c, index, leaving, copied, showCountry, onOpen, onCopy, onSkip }: Props) {
+export function CandidateCard({ candidate: c, index, leaving, copied, showCountry, onCopy, onSkip }: Props) {
     return (
         <li
             // Entrances are staggered (up to 8 cards, so scrolling down never waits long); a skipped card fades out before it's removed
@@ -34,7 +31,6 @@ export function CandidateCard({ candidate: c, index, leaving, copied, showCountr
                         href={profileUrl(c.id)}
                         target="_blank"
                         rel="noreferrer"
-                        onClick={onOpen}
                         className="truncate text-lg font-semibold text-ink transition-colors hover:text-pink"
                     >
                         {c.username}
@@ -79,7 +75,6 @@ export function CandidateCard({ candidate: c, index, leaving, copied, showCountr
                     href={profileUrl(c.id)}
                     target="_blank"
                     rel="noreferrer"
-                    onClick={onOpen}
                     className="inline-flex items-center gap-1.5 rounded-xl bg-pink px-3.5 py-2 text-sm font-semibold text-bg transition-colors hover:bg-pink-2"
                 >
                     Open profile

@@ -31,6 +31,8 @@ export const fetchFriends = () => fetch('/api/friends').then(res => parse<Friend
 
 export const syncFriends = () => fetch('/api/friends/sync', { method: 'POST' }).then(res => parse<FriendsResponse>(res));
 
+export const acceptGuidelines = () => fetch('/api/guidelines', { method: 'POST' }).then(res => parse<{ guidelinesAccepted: boolean }>(res));
+
 /** "Don't list me": listed = false removes yourself from the list, true undoes it */
 export const setListing = (listed: boolean) =>
     fetch('/api/listing', {

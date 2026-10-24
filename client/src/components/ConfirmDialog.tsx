@@ -8,6 +8,8 @@ interface Props {
     confirmLabel: string;
     /** Dangerous actions (e.g. deleting data): the confirm button turns red and focus starts on Cancel, so Enter alone can't trigger it */
     danger?: boolean;
+    /** false: no Cancel button, and Escape or clicking the backdrop doesn't close it; confirming is the only way out */
+    dismissible?: boolean;
     /** Called immediately on confirm: e.g. browsers only allow opening a new tab during the click itself, and block delayed ones */
     onConfirm: () => void;
     /** Called after the fade-out finishes; that's when the parent removes the dialog */
@@ -15,7 +17,7 @@ interface Props {
 }
 
 /** Confirmation dialog: the backdrop fades in and the dialog rises into place; on close it fades out before being removed. */
-export function ConfirmDialog({ title, children, confirmLabel, danger = false, onConfirm, onClose }: Props) {
+export function ConfirmDialog({ title, children, confirmLabel, danger = false, dismissible = true, onConfirm, onClose }: Props) {
     const [closing, setClosing] = useState(false);
     const confirmRef = useRef<HTMLButtonElement>(null);
     const cancelRef = useRef<HTMLButtonElement>(null);
@@ -33,7 +35,7 @@ export function ConfirmDialog({ title, children, confirmLabel, danger = false, o
         const previous = document.activeElement as HTMLElement | null;
         (danger ? cancelRef : confirmRef).current?.focus();
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') close();
+            if (e.key === 'Escape' && dismissible) close();
         };
         document.addEventListener('keydown', onKey);
         return () => {
@@ -46,7 +48,7 @@ export function ConfirmDialog({ title, children, confirmLabel, danger = false, o
         <div className="fixed inset-0 z-50 grid place-items-center p-4">
             <div
                 className={`absolute inset-0 bg-bg/75 backdrop-blur-sm ${closing ? 'animate-fade-away' : 'animate-fade-in'}`}
-                onClick={close}
+                onClick={dismissible ? close : undefined}
                 aria-hidden="true"
             />
             <div
@@ -65,14 +67,16 @@ export function ConfirmDialog({ title, children, confirmLabel, danger = false, o
                     {children}
                 </div>
                 <div className="mt-5 flex flex-wrap justify-end gap-2">
-                    <button
-                        ref={cancelRef}
-                        type="button"
-                        onClick={close}
-                        className="rounded-xl px-4 py-2 text-sm text-muted transition-colors hover:text-ink"
-                    >
-                        Cancel
-                    </button>
+                    {dismissible && (
+                        <button
+                            ref={cancelRef}
+                            type="button"
+                            onClick={close}
+                            className="rounded-xl px-4 py-2 text-sm text-muted transition-colors hover:text-ink"
+                        >
+                            Cancel
+                        </button>
+                    )}
                     <button
                         ref={confirmRef}
                         type="button"

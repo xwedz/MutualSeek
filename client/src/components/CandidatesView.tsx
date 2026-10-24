@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
-import { fetchCandidates, profileUrl } from '../api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { fetchCandidates } from '../api';
 import { countryName } from '../countries';
 import type { Candidate, CandidateSort, StatsResponse } from '../types';
 import { useLocalStorage } from '../useLocalStorage';
@@ -9,6 +9,7 @@ import { ChevronIcon, InfoIcon, PencilIcon, Spinner } from './Icons';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ListingButton } from './ListingButton';
 import { Pagination } from './Pagination';
+import { SkeletonCards } from './SkeletonCards';
 import { SortSelect } from './SortSelect';
 
 const SORTS: readonly CandidateSort[] = ['recent', 'rank', 'followers'];
@@ -53,9 +54,11 @@ interface Props {
     stats: StatsResponse | null;
     optedOut: boolean; // the logged-in user chose "Don't list me"
     onSetListing: (listed: boolean) => Promise<void>;
+    guidelinesAccepted: boolean; // the list only loads once the "Before you start" guidelines are accepted
+    onAcceptGuidelines: () => void;
 }
 
-export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSetListing }: Props) {
+export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSetListing, guidelinesAccepted, onAcceptGuidelines }: Props) {
     // The country the user picked (remembered in the browser); otherwise their own country, or all countries when logged out
     const [chosenCountry, setChosenCountry] = useLocalStorage<string | null>('filter.country', null);
     const country = chosenCountry ?? defaultCountry ?? 'all';
@@ -64,9 +67,6 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
     const sort = SORTS.includes(storedSort) ? storedSort : 'recent';
     const [template, setTemplate] = useLocalStorage('dm.template', DEFAULT_TEMPLATE);
     const [skipped, setSkipped] = useLocalStorage<number[]>('skipped', []);
-    // Whether the user has seen the "read what they wrote first" dialog
-    const [readFirstSeen, setReadFirstSeen] = useLocalStorage('notice.readFirst', false);
-    const [dialogFor, setDialogFor] = useState<Candidate | null>(null);
 
     // The page lives in the URL (?page=3), so reloading or the browser's back button returns to the same page
     const [page, setPage] = useState(readPageFromUrl);
@@ -101,8 +101,8 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
     }, [page, country, sort]);
 
     useEffect(() => {
-        load();
-    }, [load]);
+        if (guidelinesAccepted) load();
+    }, [load, guidelinesAccepted]);
 
     // The browser's back / forward buttons change the page in the URL; keep the view in sync
     useEffect(() => {
@@ -160,13 +160,6 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
             setSkipped(prev => (prev.includes(id) ? prev : [...prev, id]));
             setLeaving(prev => prev.filter(x => x !== id));
         }, LEAVE_MS);
-    }
-
-    // The first time a profile is opened, stop the link and show an explanation; after that links open normally
-    function open(event: MouseEvent<HTMLAnchorElement>, candidate: Candidate) {
-        if (readFirstSeen) return;
-        event.preventDefault();
-        setDialogFor(candidate);
     }
 
     async function copy(candidate: Candidate) {
@@ -261,15 +254,21 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
                         index={i}
                         leaving={leaving.includes(c.id)}
                         copied={copiedId === c.id}
-                        onOpen={e => open(e, c)}
                         onCopy={() => copy(c)}
                         onSkip={() => skip(c.id)}
                     />
                 ))}
             </ul>
 
+            {/* Until the guidelines are accepted, placeholder cards sit behind the dialog and nothing is requested */}
+            {!guidelinesAccepted && (
+                <div className="mt-4">
+                    <SkeletonCards />
+                </div>
+            )}
+
             {/* The spinner only shows on the first load (no cards yet); on page changes the old cards dim instead */}
-            {loading && candidates.length === 0 && (
+            {guidelinesAccepted && loading && candidates.length === 0 && (
                 <div className="mt-6 flex animate-fade-in justify-center text-muted">
                     <Spinner size={22} />
                 </div>
@@ -299,27 +298,26 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
                 </p>
             )}
 
-            {dialogFor && (
-                // Shown the first time a profile is opened, and not again once confirmed.
-                // Showing it only once is deliberate: a dialog that appears every time soon gets dismissed unread (warning fatigue).
-                <ConfirmDialog
-                    title={`Before you add ${dialogFor.username}`}
-                    confirmLabel="I understand, open profile"
-                    onConfirm={() => {
-                        setReadFirstSeen(true);
-                        // Open the tab during the click; noopener keeps the new tab from reaching this page's window object
-                        window.open(profileUrl(dialogFor.id), '_blank', 'noopener,noreferrer');
-                    }}
-                    onClose={() => setDialogFor(null)}
-                >
-                    <p>
-                        This list shows players whose profile <span className={HIGHLIGHT}>mentions mutuals</span>. It can't tell whether
-                        they actually want them. Some people mention mutuals <span className={HIGHLIGHT}>only to say no</span>.
-                    </p>
-                    <p>
-                        <span className={HIGHLIGHT}>Please read</span> what they wrote yourself before adding or messaging them, so you{' '}
-                        <span className={HIGHLIGHT}>don't bother anyone who isn't looking</span>.
-                    </p>
+            {!guidelinesAccepted && (
+                // Shown once per account before the list (stored on the server, so a new device or cleared browser doesn't
+                // repeat it). Once only on purpose: a dialog that appears every time soon gets dismissed unread (warning fatigue).
+                // It can't be dismissed without accepting, since its point is that everyone who sees the list has read it.
+                // Accepting happens in onClose (after the fade-out), so the dialog isn't removed mid-animation.
+                <ConfirmDialog title="Before you start" confirmLabel="I understand" dismissible={false} onConfirm={() => {}} onClose={onAcceptGuidelines}>
+                    <ul className="space-y-2.5">
+                        <li>
+                            <span className={HIGHLIGHT}>Read what they wrote first.</span> These players mention mutuals on their profile, but
+                            some only do it to say no.
+                        </li>
+                        <li>
+                            <span className={HIGHLIGHT}>One message is enough.</span> If they don't follow back or say no, let it go. Don't
+                            message again or ask why.
+                        </li>
+                        <li>
+                            <span className={HIGHLIGHT}>Be kind.</span> Everyone on this list is a real person, and osu! lets them block and
+                            report anyone who bothers them.
+                        </li>
+                    </ul>
                 </ConfirmDialog>
             )}
 

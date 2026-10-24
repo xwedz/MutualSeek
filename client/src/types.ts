@@ -10,6 +10,7 @@ export interface SessionUser {
 export interface AccountInfo {
     lastSyncedAt: number | null;
     friendLimit: number;
+    guidelinesAccepted: boolean; // accepted the current "Before you start" guidelines
 }
 
 export interface MeResponse {

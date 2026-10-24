@@ -4,6 +4,7 @@ import { ReadFirstHint } from './CandidatesView';
 import { WHY_LOG_IN } from './FaqView';
 import { ChevronIcon, PencilIcon } from './Icons';
 import { ListingButton } from './ListingButton';
+import { SkeletonCards } from './SkeletonCards';
 
 interface Props {
     optedOut: boolean;
@@ -53,12 +54,7 @@ export function LockedCandidatesView({ optedOut, onSetListing, onWhyLogIn }: Pro
             </div>
 
             <div className="relative mt-6">
-                {/* Placeholder cards fading out towards the bottom; aria-hidden since they carry no content */}
-                <ul aria-hidden="true" className="grid gap-3 [mask-image:linear-gradient(to_bottom,black_30%,transparent)]">
-                    {[0, 1, 2].map(i => (
-                        <SkeletonCard key={i} index={i} />
-                    ))}
-                </ul>
+                <SkeletonCards />
 
                 <div className="absolute inset-x-0 top-10 flex justify-center px-2 sm:top-16">
                     <div className="w-full max-w-md animate-fade-up rounded-2xl border border-line bg-surface/95 px-6 py-7 text-center shadow-2xl shadow-black/50 backdrop-blur-sm">
@@ -103,33 +99,5 @@ export function LockedCandidatesView({ optedOut, onSetListing, onWhyLogIn }: Pro
                 </ConfirmDialog>
             )}
         </section>
-    );
-}
-
-/** Same shape as CandidateCard (avatar, name, stats, excerpt, buttons), drawn with plain blocks. Static on purpose: nothing is loading. */
-function SkeletonCard({ index }: { index: number }) {
-    const bar = 'rounded-full bg-surface-2';
-    return (
-        <li style={{ animationDelay: `${index * 45}ms` }} className="animate-fade-up rounded-2xl border border-line bg-surface p-4">
-            <div className="flex items-start gap-3">
-                <div className="size-12 shrink-0 rounded-xl bg-surface-2" />
-                <div className="flex-1 pt-1">
-                    <div className={`${bar} h-4 w-32`} />
-                    <div className="mt-2.5 flex gap-3">
-                        <div className={`${bar} h-3 w-20`} />
-                        <div className={`${bar} h-3 w-14`} />
-                        <div className={`${bar} hidden h-3 w-20 sm:block`} />
-                    </div>
-                </div>
-            </div>
-            <div className="mt-3 space-y-2 rounded-xl border-l-2 border-pink/20 bg-surface-2/40 px-3 py-3">
-                <div className={`${bar} h-3 w-11/12`} />
-                <div className={`${bar} h-3 w-2/3`} />
-            </div>
-            <div className="mt-3 flex gap-2">
-                <div className="h-9 w-28 rounded-xl bg-pink/20" />
-                <div className="h-9 w-32 rounded-xl border border-line" />
-            </div>
-        </li>
     );
 }

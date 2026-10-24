@@ -19,6 +19,9 @@ const SYNC_COOLDOWN_MS = 60 * 1000; // pressing sync again within a minute just 
 const PAGE_SIZE = 5;
 // osu! friend limits (per the official supporter page, supporter raises it from 500 to 1000)
 const FRIEND_LIMIT = { normal: 500, supporter: 1000 };
+// The "Before you start" guidelines shown before Find people. Raise this after an important change to the text so
+// everyone sees it again (migration 0007).
+const GUIDELINES_VERSION = 1;
 
 // Rate limit per client IP; blocked requests get a 429 before touching the database.
 app.use('/api/*', async (c, next) => {
@@ -35,10 +38,11 @@ app.route('/api/auth', auth);
 interface AccountRow {
     is_supporter: number;
     last_synced_at: number | null;
+    guidelines_version: number;
 }
 
 async function loadAccount(c: Context<AppEnv>, user: SessionUser) {
-    return c.env.DB.prepare('SELECT is_supporter, last_synced_at FROM accounts WHERE osu_user_id = ?')
+    return c.env.DB.prepare('SELECT is_supporter, last_synced_at, guidelines_version FROM accounts WHERE osu_user_id = ?')
         .bind(user.osuUserId)
         .first<AccountRow>();
 }
@@ -46,6 +50,7 @@ async function loadAccount(c: Context<AppEnv>, user: SessionUser) {
 const accountJson = (row: AccountRow) => ({
     lastSyncedAt: row.last_synced_at,
     friendLimit: row.is_supporter ? FRIEND_LIMIT.supporter : FRIEND_LIMIT.normal,
+    guidelinesAccepted: row.guidelines_version >= GUIDELINES_VERSION,
 });
 
 async function isOptedOut(c: Context<AppEnv>, osuUserId: number) {
@@ -58,6 +63,14 @@ app.get('/api/me', async c => {
     const account = user && (await loadAccount(c, user));
     if (!user || !account) return c.json({ user: null });
     return c.json({ user, account: accountJson(account), optedOut: await isOptedOut(c, user.osuUserId) });
+});
+
+/** The user clicked "I understand" on the "Before you start" guidelines */
+app.post('/api/guidelines', async c => {
+    const user = await getSessionUser(c);
+    if (!user) return c.json({ error: 'Please log in first.' }, 401);
+    await c.env.DB.prepare('UPDATE accounts SET guidelines_version = ?1 WHERE osu_user_id = ?2').bind(GUIDELINES_VERSION, user.osuUserId).run();
+    return c.json({ guidelinesAccepted: true });
 });
 
 /**
