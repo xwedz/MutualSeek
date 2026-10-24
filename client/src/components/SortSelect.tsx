@@ -12,7 +12,7 @@ interface Props {
     onChange: (value: CandidateSort) => void;
 }
 
-/** 排序選單。外觀和 CountrySelect 一樣，用原生 <select>（理由見 CountrySelect）。 */
+/** Sort menu. Looks like CountrySelect and also uses a native <select> (see CountrySelect for why). */
 export function SortSelect({ value, onChange }: Props) {
     return (
         <label className="relative inline-flex items-center">

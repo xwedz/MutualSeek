@@ -6,7 +6,7 @@ import { Avatar } from './Avatar';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ChevronIcon, ExternalIcon, LinkIcon, RefreshIcon, Spinner, UnlinkIcon, UserMinusIcon, UserPlusIcon } from './Icons';
 
-// 加了幾天還沒回加，就建議考慮移除，把好友名額留給其他人
+// After this many days without a follow-back, suggest removing them to free the friend slot for someone else
 const STALE_DAYS = 7;
 
 export function TrackingView({ onDeleted }: { onDeleted: () => void }) {
@@ -29,7 +29,7 @@ export function TrackingView({ onDeleted }: { onDeleted: () => void }) {
         }
     }, []);
 
-    // 打開這一頁就自動同步一次（後端一分鐘內重複同步會直接回傳現有資料）
+    // Sync once when the page opens (repeat syncs within a minute just return the current data)
     useEffect(() => {
         sync();
     }, [sync]);
@@ -128,7 +128,7 @@ export function TrackingView({ onDeleted }: { onDeleted: () => void }) {
     );
 }
 
-/** 頁面最下方的「刪除我的資料」：先跳確認視窗，確認後才真的刪除。 */
+/** "Delete my data" at the bottom of the page: asks for confirmation before actually deleting anything. */
 function DeleteMyData({ onDeleted }: { onDeleted: () => void }) {
     const [confirming, setConfirming] = useState(false);
     const [deleting, setDeleting] = useState(false);
@@ -194,7 +194,7 @@ function Stat({ label, value, sub, children }: { label: string; value: string; s
         <div className="rounded-2xl border border-line bg-surface px-4 py-3">
             <p className="text-xs tracking-wide text-muted uppercase">{label}</p>
             <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-            {/* 補充說明獨立一行：手機上三欄很窄，跟數字擠在同一行會斷得很難看 */}
+            {/* The hint gets its own line: the three columns are narrow on phones and it would wrap badly next to the number */}
             {sub && <p className="text-xs text-muted">{sub}</p>}
             {children}
         </div>
@@ -276,7 +276,7 @@ function EventItem({ event: e, index, now }: { event: FriendEvent; index: number
     );
 }
 
-/** 開始追蹤前就加了、但對方沒有回加的人。預設收合，避免名單太長。 */
+/** People added before tracking started who never followed back. Collapsed by default so the page doesn't get too long. */
 function OneSided({ friends, now }: { friends: Friend[]; now: number }) {
     const [open, setOpen] = useState(false);
     return (

@@ -1,7 +1,7 @@
-// src/env.ts —— Worker 拿得到的所有綁定（binding）與設定值的型別。
+// src/env.ts — types for every binding and setting the Worker receives.
 //
-// wrangler.jsonc 的 d1_databases / ratelimits / vars 與 .dev.vars 的機密值，
-// 都會以 env.XXX 的形式傳進 Worker。在這裡集中宣告，打錯名字時編譯就會報錯。
+// d1_databases / ratelimits / vars from wrangler.jsonc and the secrets from .dev.vars all arrive as env.XXX.
+// Declaring them in one place means a typo in a name fails at compile time.
 
 export interface Env {
     DB: D1Database;
@@ -12,18 +12,18 @@ export interface Env {
     SESSION_SECRET: string;
     TOKEN_ENCRYPTION_KEY: string;
 
-    // 只有本機開發會設定，見 .dev.vars.example
+    // Only set for local development, see .dev.vars.example
     OSU_REDIRECT_URI?: string;
     FRONTEND_URL?: string;
 
-    // "all" = 所有國家（依活躍玩家數從多到少）；也可以填逗號分隔的國家代碼，例如 "TW,JP"
+    // "all" = every country (most active players first); or comma-separated country codes, e.g. "TW,JP"
     SCAN_COUNTRIES: string;
     SCAN_MODE: string;
-    // 暫停背景掃描（不再呼叫 osu! API）："now" = 立刻暫停；
-    // 國家代碼（例如 "US"）= 這一輪讀完這個國家、待掃清單也掃完後暫停；
-    // 留空 = 不暫停。清空後重新部署就會從暫停的地方繼續。
+    // Pauses the background scanner (no more osu! API calls): "now" = pause right away;
+    // a country code (e.g. "US") = pause once that country is done this pass and its queue is empty;
+    // empty = don't pause. Clear it and redeploy to continue from where it stopped.
     SCAN_PAUSE?: string;
 }
 
-/** Hono 用的型別參數：讓 c.env 帶有上面的型別。 */
+/** Type parameter for Hono, so c.env has the types above. */
 export type AppEnv = { Bindings: Env };

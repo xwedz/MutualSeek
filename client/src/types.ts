@@ -1,4 +1,4 @@
-// 後端 API 回傳的資料形狀。欄位名稱跟資料庫一致（snake_case），對照 src/index.ts 的查詢。
+// Shapes of the backend API responses. Field names match the database (snake_case); see the queries in src/index.ts.
 
 export interface SessionUser {
     osuUserId: number;
@@ -15,10 +15,10 @@ export interface AccountInfo {
 export interface MeResponse {
     user: SessionUser | null;
     account?: AccountInfo;
-    optedOut?: boolean; // 選了「Don't list me」
+    optedOut?: boolean; // chose "Don't list me"
 }
 
-/** 摘錄的一小段文字；hit = true 的部分是命中的關鍵字（對照 src/detect.ts） */
+/** A piece of an excerpt; parts with hit = true are matched keywords (see src/detect.ts) */
 export interface SnippetPart {
     text: string;
     hit: boolean;
@@ -43,7 +43,7 @@ export interface CandidatesResponse {
     hasMore: boolean;
 }
 
-/** 候選人列表的排序（對照 src/index.ts 的 CANDIDATE_ORDER） */
+/** Candidate list sort order (see CANDIDATE_ORDER in src/index.ts) */
 export type CandidateSort = 'recent' | 'rank' | 'followers';
 
 export interface Friend {
@@ -81,14 +81,14 @@ export interface FriendsResponse {
     result?: SyncResult | null;
 }
 
-/** 對照 src/crawler.ts 的 getCrawlerProgress */
+/** See getCrawlerProgress in src/crawler.ts */
 export interface StatsResponse {
-    countries: string; // "all" 或逗號分隔的國家代碼
+    countries: string; // "all" or comma-separated country codes
     mode: string;
     countriesInPass: number;
     currentCountry: string | null;
     passScanned: number;
     lastPassScanned: number | null;
     mentioned: number | null;
-    byCountry: { code: string; count: number }[]; // 有候選人的國家，依人數由多到少（每小時更新）
+    byCountry: { code: string; count: number }[]; // countries with candidates, largest first (updated hourly)
 }

@@ -8,8 +8,8 @@ interface Props {
 }
 
 /**
- * 常見問題。每一題可以各自展開／收合（可以同時開好幾題）。
- * 內容要跟實際行為一致：改了掃描範圍、頻率、關鍵字語言或保存的資料時，這裡也要一起改。
+ * Frequently asked questions. Each one expands and collapses on its own (several can be open at once).
+ * Keep the answers in line with how the site behaves: update them when the scan scope, frequency, keyword languages or stored data change.
  */
 export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
     const items: { q: string; a: ReactNode }[] = [
@@ -149,7 +149,7 @@ function FaqItem({ id, question, children }: { id: string; question: string; chi
                 {question}
                 <ChevronIcon size={16} className={`shrink-0 text-muted transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
             </button>
-            {/* 用 grid-rows 0fr → 1fr 做高度展開動畫（跟訊息範本的展開方式一樣）；收合時用 inert 讓裡面的按鈕無法被 Tab 選到 */}
+            {/* grid-rows 0fr → 1fr animates the height (like the message template); inert keeps collapsed buttons out of the Tab order */}
             <div
                 id={id}
                 inert={!open}
@@ -165,7 +165,7 @@ function FaqItem({ id, question, children }: { id: string; question: string; chi
     );
 }
 
-/** FAQ 裡的「Don't list me」開關：沒登入就顯示登入按鈕（登入後回到 FAQ）。 */
+/** The "Don't list me" control in the FAQ: shows a login button when logged out (login returns to the FAQ). */
 function ListingControl({ loggedIn, optedOut, onSetListing }: Props) {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -195,7 +195,7 @@ function ListingControl({ loggedIn, optedOut, onSetListing }: Props) {
 
     return (
         <div className="rounded-xl border border-line bg-bg/60 p-3">
-            {/* key 換了就重新掛載並淡入，狀態文字不會突然跳 */}
+            {/* A new key remounts and fades in, so the status text never jumps */}
             <p key={String(optedOut)} className="animate-fade-in text-ink">
                 {optedOut
                     ? "You won't be listed. If you undo this, you'll appear again after the next scan finds a mention on your profile."

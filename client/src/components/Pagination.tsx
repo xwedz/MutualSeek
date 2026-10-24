@@ -3,13 +3,13 @@ import { ChevronIcon } from './Icons';
 interface Props {
     page: number;
     hasNext: boolean;
-    disabled: boolean; // 載入中先停用，避免連按跳過頭
+    disabled: boolean; // disabled while loading, so repeated clicks can't skip pages
     onChange: (page: number) => void;
 }
 
 /**
- * 「‹ Previous   Page 3   Next ›」。不顯示總頁數：要算總數就得每次把所有候選人數一遍，
- * 免費方案的讀取額度負擔不起；後端只回答「還有沒有下一頁」，所以這樣顯示永遠是準的。
+ * "‹ Previous   Page 3   Next ›". No total page count: computing it would mean counting every candidate each time,
+ * which the free plan's read allowance can't afford. The backend only says whether a next page exists, so this display is always accurate.
  */
 export function Pagination({ page, hasNext, disabled, onChange }: Props) {
     const button =

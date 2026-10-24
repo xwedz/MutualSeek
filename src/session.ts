@@ -1,9 +1,9 @@
 // src/session.ts
 //
-// 登入狀態存在「簽章 cookie」裡，做法和 Higher or Lower 相同：內容是明文，靠 HMAC 簽章防竄改。
-// 差別是這裡改用 Web Crypto（crypto.subtle），不需要開啟 Node 相容模式。
+// The login state lives in a signed cookie: the content is plain text, and an HMAC signature prevents tampering.
+// It uses Web Crypto (crypto.subtle), so Node compatibility mode isn't needed.
 //
-// cookie 只放公開資訊（osu! id、名字、頭像），osu! 的 token 加密存在資料庫，不放在 cookie。
+// The cookie only holds public information (osu! id, name, avatar); osu! tokens are stored encrypted in the database.
 
 import type { Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -19,15 +19,15 @@ export interface SessionUser {
     osuUserId: number;
     username: string;
     avatarUrl: string | null;
-    countryCode: string | null; // 網站的國家選單預設選這個國家；舊版 session 沒有這個欄位，就是 null
+    countryCode: string | null; // the country menu defaults to this; null for older sessions without the field
 }
 
 function hmacKey(secret: string): Promise<CryptoKey> {
-    if (!secret) throw new Error('缺少 SESSION_SECRET');
+    if (!secret) throw new Error('SESSION_SECRET is missing');
     return crypto.subtle.importKey('raw', utf8(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 }
 
-// purpose 一起放進簽章：不同用途（登入狀態、OAuth state）的值不能互相冒用。
+// The purpose is part of the signature, so a value signed for one use (session, OAuth state) can't be reused for another.
 export async function seal(secret: string, purpose: string, payload: object, ttlMs: number): Promise<string> {
     const body = toBase64Url(utf8(JSON.stringify({ ...payload, exp: Date.now() + ttlMs })));
     const signature = await crypto.subtle.sign('HMAC', await hmacKey(secret), utf8(`${purpose}.${body}`));
@@ -40,7 +40,7 @@ export async function unseal(secret: string, purpose: string, value: string | un
     if (!body || !signature || extra !== undefined) return null;
 
     try {
-        // crypto.subtle.verify 內部是固定時間比較，不會因為比對到第幾個字元才失敗而洩漏資訊。
+        // crypto.subtle.verify compares in constant time, so how far a guess matches doesn't leak through timing.
         const valid = await crypto.subtle.verify('HMAC', await hmacKey(secret), fromBase64Url(signature), utf8(`${purpose}.${body}`));
         if (!valid) return null;
 
@@ -54,13 +54,13 @@ export async function unseal(secret: string, purpose: string, value: string | un
 
 const cookieOptions = (c: Ctx, ttlMs: number) => ({
     httpOnly: true,
-    // Lax：從 osu! 授權頁導回來（頂層 GET 導覽）時瀏覽器會帶上 cookie，
-    // 但其他網站發起的跨站 POST 不會帶，等於順便擋掉 CSRF。
+    // Lax: the browser sends the cookie when osu! redirects back (a top-level GET navigation),
+    // but not on cross-site POSTs started by other sites, which also blocks CSRF.
     sameSite: 'Lax' as const,
-    // 只有走 https 時才加 Secure（本機開發是 http）。
+    // Secure only over https (local development uses http).
     secure: new URL(c.req.url).protocol === 'https:',
     path: '/',
-    maxAge: Math.floor(ttlMs / 1000), // Hono 的單位是秒
+    maxAge: Math.floor(ttlMs / 1000), // Hono uses seconds
 });
 
 export async function setSealedCookie(c: Ctx, name: string, purpose: string, payload: object, ttlMs: number) {
@@ -83,7 +83,7 @@ export function endSession(c: Ctx) {
     clearCookie(c, SESSION_COOKIE);
 }
 
-/** 目前登入的使用者，沒登入（或 cookie 無效、過期）就是 null。 */
+/** The logged-in user, or null if not logged in (or the cookie is invalid or expired). */
 export async function getSessionUser(c: Ctx): Promise<SessionUser | null> {
     const payload = await readSealedCookie(c, SESSION_COOKIE, 'session');
     if (!payload || !Number.isInteger(payload.osuUserId) || typeof payload.username !== 'string') return null;

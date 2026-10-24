@@ -1,11 +1,13 @@
--- 從沒當過 supporter 的玩家，只存 id（見 src/crawler.ts 的 splitRankingPage）。
+-- Players who never had osu!supporter, ids only (see splitRankingPage in src/crawler.ts).
 --
--- osu! 規定第一次建立個人頁面（me!）時必須「現在或過去曾經是 supporter」（osu-web 的 checkUserPageEdit），
--- 所以這些人不可能寫了個人頁面。第二輪起，排行榜顯示他們目前也不是 supporter，就不用再抓他們的個人頁面。
+-- osu! only lets someone create a profile page ("me!") if they have or have had supporter (osu-web's checkUserPageEdit),
+-- so these players can't have written one. From the second pass on, if the rankings show they still aren't
+-- supporters, their profile doesn't need to be fetched.
 --
--- 為什麼要自己記：「曾經是 supporter」（has_supported）只有單一使用者的 API 才有，
--- 排行榜上只有 is_supporter（目前是不是），所以只能在掃描個人頁面時順便記下來。
--- 之後買了 supporter 的人，排行榜上 is_supporter 會變成 true，照常掃描，掃到時再從這裡移除。
+-- Why it has to be recorded here: "has ever had supporter" (has_supported) only comes with the single-user API;
+-- the rankings only include is_supporter (supporter right now), so it can only be noted while scanning profiles.
+-- Players who buy supporter later show is_supporter = true in the rankings, get scanned as usual, and are removed
+-- from this table at that point.
 
 CREATE TABLE non_supporters (
     id INTEGER PRIMARY KEY

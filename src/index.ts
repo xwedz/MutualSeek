@@ -1,7 +1,7 @@
-// src/index.ts —— Cloudflare Worker 入口（Hono）
+// src/index.ts — Cloudflare Worker entry point (Hono)
 //
-// fetch：處理 /api/*（wrangler.jsonc 的 run_worker_first）；前端頁面由 Cloudflare 直接提供。
-// scheduled：Cron Trigger 每分鐘呼叫一次，執行背景掃描。
+// fetch: handles /api/* (run_worker_first in wrangler.jsonc); the frontend is served by Cloudflare directly.
+// scheduled: called by the Cron Trigger once a minute to run the background scanner.
 
 import { Hono, type Context } from 'hono';
 import { deleteAccountData } from './account';
@@ -14,13 +14,13 @@ import { endSession, getSessionUser, type SessionUser } from './session';
 
 const app = new Hono<AppEnv>();
 
-const SYNC_COOLDOWN_MS = 60 * 1000; // 同一個人一分鐘內重複按「同步」，直接回傳現有資料
-// 候選人列表每頁幾個人：每張卡片都有摘錄要讀，5 個人大約剛好一個畫面，方便專心看完再換頁
+const SYNC_COOLDOWN_MS = 60 * 1000; // pressing sync again within a minute just returns the current data
+// Players per page: every card has an excerpt to read, and five fit on about one screen
 const PAGE_SIZE = 5;
-// osu! 好友上限（官方 supporter 頁面：supporter 從 500 提高到 1000）
+// osu! friend limits (per the official supporter page, supporter raises it from 500 to 1000)
 const FRIEND_LIMIT = { normal: 500, supporter: 1000 };
 
-// 頻率限制：依來源 IP 計算，被擋下的請求在碰到資料庫之前就回 429。
+// Rate limit per client IP; blocked requests get a 429 before touching the database.
 app.use('/api/*', async (c, next) => {
     if (c.env.API_LIMITER) {
         const ip = c.req.header('cf-connecting-ip') ?? 'unknown';
@@ -52,7 +52,7 @@ async function isOptedOut(c: Context<AppEnv>, osuUserId: number) {
     return Boolean(await c.env.DB.prepare('SELECT 1 FROM opt_outs WHERE id = ?').bind(osuUserId).first());
 }
 
-/** 目前登入的使用者（沒登入回傳 null）。資料庫裡找不到帳號時也當作沒登入。 */
+/** The logged-in user (null if not logged in). A session without an account in the database also counts as logged out. */
 app.get('/api/me', async c => {
     const user = await getSessionUser(c);
     const account = user && (await loadAccount(c, user));
@@ -61,8 +61,9 @@ app.get('/api/me', async c => {
 });
 
 /**
- * 「Don't list me」：{ listed: false } 立刻從候選人列表移除，之後的掃描也不會再存；{ listed: true } 取消。
- * 取消後不會立刻出現，要等下一輪掃描掃到時才會重新列出（這裡沒有對方個人頁面的資料可以補回去）。
+ * "Don't list me": { listed: false } removes the user from the list right away and keeps future scans from storing
+ * them; { listed: true } undoes it. Undoing doesn't bring them back immediately: they're listed again once the next
+ * scan reaches them (there's no profile data here to restore).
  */
 app.post('/api/listing', async c => {
     const user = await getSessionUser(c);
@@ -85,15 +86,15 @@ app.post('/api/listing', async c => {
 });
 
 /**
- * 候選人列表：個人頁面有提到 mutual 的玩家（是否真的想要 mutual，由使用者讀摘錄後自己判斷）。
- * players 表裡只有活躍的玩家（見 crawler.ts），所以這裡不用再篩選最後上線時間。
- * 登入後會排除「已經在你好友名單裡」的人（以最近一次同步為準）與你自己。
- * 排序（sort=）：每種都有對應的索引（migrations 0002、0003、0005），DESC 會把 null 排在最後；
- *   最後再依 id 排，同分（例如粉絲數相同）時順序固定，換頁才不會重複或漏掉人。
- *   recent    最近上線的優先（預設；隱藏上線狀態的人排最後）
- *   rank      排名最前的優先（用 pp 由高到低，順序跟排名相同）
- *   followers 粉絲最多的優先
- * country=TW 只看某個國家（走「國家在前」的索引）；不帶或格式不對就是所有國家
+ * Candidates: players whose profile mentions mutuals (whether they actually want them is for the user to judge from
+ * the excerpt). The players table only holds active players (see crawler.ts), so there's no last-visit filter here.
+ * When logged in, players already on your friend list (as of your last sync) and you yourself are excluded.
+ * Sort (sort=): each order has a matching index (migrations 0002, 0003, 0005); DESC puts nulls last.
+ *   Every order ends with id so ties (e.g. equal follower counts) keep a fixed order and pages never repeat or skip anyone.
+ *   recent    most recently online first (default; players who hide their online status come last)
+ *   rank      best rank first (pp, highest first, which gives the same order as rank)
+ *   followers most followers first
+ * country=TW limits the list to one country (using the country-first indexes); missing or malformed = all countries
  */
 const CANDIDATE_ORDER = {
     recent: 'p.last_visit DESC, p.id DESC',
@@ -103,14 +104,14 @@ const CANDIDATE_ORDER = {
 
 app.get('/api/candidates', async c => {
     const user = await getSessionUser(c);
-    // page 從 1 開始；格式不對就當第 1 頁。上限只是防止有人傳超大的數字
+    // page starts at 1; anything malformed means page 1. The upper bound only guards against absurd numbers
     const page = Math.min(Math.max(Math.floor(Number(c.req.query('page'))) || 1, 1), 100_000);
     const offset = (page - 1) * PAGE_SIZE;
     const country = c.req.query('country')?.toUpperCase() ?? '';
     const byCountry = /^[A-Z]{2}$/.test(country);
-    // 只接受清單裡的值（SQL 的 ORDER BY 不能用參數，所以絕不能直接拼接使用者傳來的字串）
+    // Only values from the list are accepted (ORDER BY can't be parameterised, so user input must never be spliced in)
     const sortParam = c.req.query('sort') ?? '';
-    // 用 Object.hasOwn 而不是 in：in 也會比對到繼承來的屬性（例如 sort=constructor）
+    // Object.hasOwn rather than `in`: `in` also matches inherited properties (e.g. sort=constructor)
     const order = Object.hasOwn(CANDIDATE_ORDER, sortParam)
         ? CANDIDATE_ORDER[sortParam as keyof typeof CANDIDATE_ORDER]
         : CANDIDATE_ORDER.recent;
@@ -127,11 +128,11 @@ app.get('/api/candidates', async c => {
          ORDER BY ${order}
          LIMIT ?2 OFFSET ?3`,
     )
-        // 只有依國家篩選時，SQL 裡才有 ?4，所以也只在這時候帶第 4 個參數
+        // ?4 only exists in the SQL when filtering by country, so the fourth parameter is only bound then
         .bind(...([user?.osuUserId ?? 0, PAGE_SIZE + 1, offset, ...(byCountry ? [country] : [])] as const))
         .all<Record<string, unknown> & { mutual_snippet: string | null }>();
 
-    // 多查一筆：查得到第 PAGE_SIZE + 1 筆，就代表還有下一頁
+    // One extra row is fetched: if row PAGE_SIZE + 1 exists, there's a next page
     const candidates = results.slice(0, PAGE_SIZE).map(({ mutual_snippet, ...row }) => ({
         ...row,
         snippets: parseSnippets(mutual_snippet),
@@ -139,14 +140,14 @@ app.get('/api/candidates', async c => {
     return c.json({ candidates, hasMore: results.length > PAGE_SIZE });
 });
 
-/** 資料庫裡的摘錄是 JSON；萬一格式不對（例如舊版存的純文字），就當成一段沒有標記的文字。 */
+/** Excerpts are stored as JSON; anything else (e.g. plain text from an older version) becomes one unmarked snippet. */
 function parseSnippets(value: string | null): Snippet[] {
     if (!value) return [];
     try {
         const parsed = JSON.parse(value);
         if (Array.isArray(parsed)) return parsed as Snippet[];
     } catch {
-        // 不是 JSON：落到下面的處理
+        // not JSON: handled below
     }
     return [[{ text: value, hit: false }]];
 }
@@ -165,7 +166,7 @@ async function friendsResponse(c: Context<AppEnv>, user: SessionUser, account: A
     };
 }
 
-/** 你的好友名單（含 mutual 狀態）與最近的變動紀錄。 */
+/** Your friend list (with mutual status) and recent changes. */
 app.get('/api/friends', async c => {
     const user = await getSessionUser(c);
     const account = user && (await loadAccount(c, user));
@@ -173,7 +174,7 @@ app.get('/api/friends', async c => {
     return c.json(await friendsResponse(c, user, account));
 });
 
-/** 從 osu! 讀取最新的好友名單並比對差異，回傳同步結果與更新後的名單。 */
+/** Reads the latest friend list from osu!, compares it with the last one, and returns the result and updated list. */
 app.post('/api/friends/sync', async c => {
     const user = await getSessionUser(c);
     let account = user && (await loadAccount(c, user));
@@ -190,7 +191,7 @@ app.post('/api/friends/sync', async c => {
     return c.json({ result, ...(await friendsResponse(c, user, account)) });
 });
 
-/** 刪除我的資料：撤銷 token、刪除帳號與好友紀錄，然後登出。無法復原（前端會先跳確認視窗）。 */
+/** Delete my data: revoke tokens, delete the account and friend history, then log out. Can't be undone (the frontend asks first). */
 app.post('/api/account/delete', async c => {
     const user = await getSessionUser(c);
     if (!user) return c.json({ error: 'Please log in first.' }, 401);
@@ -199,7 +200,7 @@ app.post('/api/account/delete', async c => {
     return c.json({ ok: true });
 });
 
-/** 背景掃描的進度（顯示在頁尾）。 */
+/** Background scanner progress (shown in the footer). */
 app.get('/api/stats', async c => {
     return c.json({ countries: c.env.SCAN_COUNTRIES, mode: c.env.SCAN_MODE, ...(await getCrawlerProgress(c.env.DB)) });
 });
@@ -215,7 +216,7 @@ export default {
         ctx.waitUntil(
             runCrawler(env).then(
                 summary => console.log(`[crawler] ${summary}`),
-                err => console.error('[crawler] 失敗:', err),
+                err => console.error('[crawler] failed:', err),
             ),
         );
     },

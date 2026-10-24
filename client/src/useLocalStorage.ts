@@ -1,6 +1,6 @@
-// 存在瀏覽器裡的個人偏好（略過的玩家、私訊範本）。
-// 只放「遺失了也沒關係」的東西：無痕模式或清除網站資料時，localStorage 可能讀不到或寫入失敗，
-// 所以讀寫都包在 try/catch 裡，失敗就退回預設值，畫面照常運作。
+// Personal preferences kept in the browser (skipped players, the message template).
+// Only things that are fine to lose: in private browsing or after clearing site data, localStorage may fail to read or write,
+// so every read and write is wrapped in try/catch and falls back to the default, and the page keeps working.
 
 import { useCallback, useState } from 'react';
 
@@ -16,8 +16,8 @@ export function useLocalStorage<T>(key: string, initial: T): [T, (update: Update
         }
     });
 
-    // 跟 useState 一樣支援「函式更新」：setX(prev => ...) 拿到的永遠是最新值，
-    // 不會因為 setTimeout 之類的延遲執行，用到建立當下的舊值。
+    // Supports functional updates like useState: setX(prev => ...) always receives the latest value,
+    // even when called later (e.g. from setTimeout), never a stale value captured earlier.
     const update = useCallback(
         (next: Update<T>) => {
             setValue(prev => {
@@ -25,7 +25,7 @@ export function useLocalStorage<T>(key: string, initial: T): [T, (update: Update
                 try {
                     localStorage.setItem(key, JSON.stringify(resolved));
                 } catch {
-                    // 寫不進去就只保留在這次的頁面狀態裡
+                    // if it can't be written, it only lives in this page's state
                 }
                 return resolved;
             });

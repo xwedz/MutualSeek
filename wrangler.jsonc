@@ -1,12 +1,12 @@
 {
     "$schema": "node_modules/wrangler/config-schema.json",
-    // Worker 名稱，也決定 workers.dev 的網址（mutualseek.<帳號子網域>.workers.dev）
+    // Worker name, which also sets the workers.dev URL (mutualseek.<account subdomain>.workers.dev)
     "name": "mutualseek",
     "main": "src/index.ts",
     "compatibility_date": "2026-10-01",
 
-    // 前端（client/dist）由 Cloudflare 直接提供，靜態檔案免費且不計入請求額度。
-    // 只有 /api/* 會執行 Worker；其他路徑找不到檔案時回傳 index.html（單頁應用程式）。
+    // The frontend (client/dist) is served by Cloudflare directly; static assets are free and don't count as requests.
+    // Only /api/* runs the Worker; other paths without a file get index.html (single-page application).
     "assets": {
         "directory": "./client/dist",
         "not_found_handling": "single-page-application",
@@ -17,13 +17,13 @@
         {
             "binding": "DB",
             "database_name": "osu-mutual-tool",
-            // `npx wrangler d1 create osu-mutual-tool` 建立的線上資料庫（本機開發 --local 不會用到這個值）
+            // The production database created with `npx wrangler d1 create osu-mutual-tool` (local --local runs don't use this id)
             "database_id": "09bc6e1a-8245-49b0-a547-ae85e6d477ce",
             "migrations_dir": "migrations"
         }
     ],
 
-    // 每個 IP 的頻率限制，擋單一來源猛刷 API。period 只能是 10 或 60 秒。
+    // Per-IP rate limit against a single source hammering the API. period can only be 10 or 60 seconds.
     "ratelimits": [
         {
             "name": "API_LIMITER",
@@ -32,23 +32,23 @@
         }
     ],
 
-    // 背景掃描：每分鐘跑一次，每次只做一小批（見 src/crawler.ts 的說明）。
+    // Background scanner: runs every minute and does a small batch each time (see src/crawler.ts).
     "triggers": { "crons": ["* * * * *"] },
 
-    // Workers Logs：在 Cloudflare 儀表板查看每次執行的紀錄與錯誤（例如超過 CPU 時間限制）。
-    // 免費方案每天 20 萬筆、保留 3 天；背景掃描每天約 1,440 次執行，用量很小。
+    // Workers Logs: see each run's logs and errors in the Cloudflare dashboard (e.g. exceeding the CPU limit).
+    // The free plan keeps 200,000 events a day for 3 days; the scanner's ~1,440 runs a day use very little of it.
     "observability": { "enabled": true, "head_sampling_rate": 1 },
 
     "vars": {
-        // 掃描範圍："all" = 所有國家（依活躍玩家數從多到少逐國掃描），
-        // 也可以填逗號分隔的國家代碼，例如 "TW,JP"。目前只掃 osu! 標準模式。
+        // What to scan: "all" = every country (most active players first),
+        // or comma-separated country codes such as "TW,JP". Only osu! standard mode is scanned.
         "SCAN_COUNTRIES": "all",
         "SCAN_MODE": "osu",
-        // 暫停掃描："now" = 立刻暫停；國家代碼 = 這一輪讀完這個國家（含最後一頁的人）後暫停；留空 = 不暫停
+        // Pause scanning: "now" = right away; a country code = once that country (including its last page) is done this pass; empty = don't pause
         "SCAN_PAUSE": ""
     }
 
-    // 機密值不要寫在這裡：
-    //   本機：放在 .dev.vars（已加入 .gitignore），格式見 .dev.vars.example
-    //   線上：npx wrangler secret put OSU_CLIENT_ID（其他機密值同理）
+    // Don't put secrets here:
+    //   locally: in .dev.vars (gitignored), see .dev.vars.example for the format
+    //   production: npx wrangler secret put OSU_CLIENT_ID (and likewise for the other secrets)
 }

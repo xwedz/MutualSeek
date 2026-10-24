@@ -1,4 +1,4 @@
-// 顯示用的小工具：相對時間、數字格式。
+// Small display helpers: relative times and number formatting.
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;

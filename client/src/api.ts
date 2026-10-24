@@ -1,4 +1,4 @@
-// 所有跟後端溝通的地方都集中在這裡，元件本身不直接碰 fetch。
+// Every call to the backend lives here; components never call fetch directly.
 
 import type { CandidateSort, CandidatesResponse, FriendsResponse, MeResponse, StatsResponse } from './types';
 
@@ -21,7 +21,7 @@ export const fetchMe = () => fetch('/api/me').then(res => parse<MeResponse>(res)
 
 export const logout = () => fetch('/api/auth/logout', { method: 'POST' }).then(res => parse<{ ok: true }>(res));
 
-/** page 從 1 開始；country = 'all' 代表所有國家 */
+/** page starts at 1; country = 'all' means every country */
 export const fetchCandidates = (page: number, country: string, sort: CandidateSort) =>
     fetch(`/api/candidates?page=${page}&sort=${sort}${country === 'all' ? '' : `&country=${country}`}`).then(res =>
         parse<CandidatesResponse>(res),
@@ -31,7 +31,7 @@ export const fetchFriends = () => fetch('/api/friends').then(res => parse<Friend
 
 export const syncFriends = () => fetch('/api/friends/sync', { method: 'POST' }).then(res => parse<FriendsResponse>(res));
 
-/** 「Don't list me」：listed = false 從候選人列表移除自己，true 取消 */
+/** "Don't list me": listed = false removes yourself from the list, true undoes it */
 export const setListing = (listed: boolean) =>
     fetch('/api/listing', {
         method: 'POST',

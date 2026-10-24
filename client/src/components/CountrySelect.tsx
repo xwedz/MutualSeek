@@ -2,18 +2,18 @@ import { countryName } from '../countries';
 import { ChevronIcon } from './Icons';
 
 interface Props {
-    value: string; // 'all' 或國家代碼
-    countries: string[]; // 有候選人的國家代碼，依人數由多到少
+    value: string; // 'all' or a country code
+    countries: string[]; // country codes that have candidates, largest first
     onChange: (value: string) => void;
 }
 
 /**
- * 國家選單。用瀏覽器原生的 <select>：手機上會開系統內建的選擇介面，最好操作；
- * 桌面上展開後直接打字（例如 "Tai"）可以跳到該國家。
- * 不顯示人數：人數每小時才更新、也沒扣掉使用者已經加的好友，跟列表實際顯示的數量對不上，反而容易混淆。
+ * Country menu. A native <select>: phones open the system picker, which is the easiest to use,
+ * and on desktop typing (e.g. "Tai") jumps to that country.
+ * No counts: they only update hourly and don't exclude the user's friends, so they wouldn't match the list and would confuse more than help.
  */
 export function CountrySelect({ value, countries, onChange }: Props) {
-    // 目前選的國家還沒有候選人時（例如使用者自己的國家），也要出現在選單裡，不然畫面會對不上
+    // The selected country must be in the menu even before it has candidates (e.g. the user's own country), or the menu and list wouldn't match
     const list = value !== 'all' && !countries.includes(value) ? [...countries, value] : countries;
 
     return (

@@ -1,10 +1,10 @@
-// splitRankingPage：一頁排行榜裡，誰要掃描、誰跳過（npm test）。
+// splitRankingPage: who on a ranking page gets scanned and who is skipped (npm test).
 
 import { describe, expect, it } from 'vitest';
 import { splitRankingPage } from './crawler';
 import type { RankingResponse } from './osu';
 
-/** 只填判斷會用到的欄位 */
+/** Only the fields the split looks at */
 const entry = (id: number, user: { is_active?: boolean; is_supporter?: boolean }) =>
     ({ user: { id, ...user }, global_rank: null, pp: null }) as unknown as RankingResponse['ranking'][number];
 

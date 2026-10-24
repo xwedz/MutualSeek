@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-/** osu! 頭像。圖片載入失敗時（帳號沒設頭像、網路問題）改顯示名字的第一個字。 */
+/** osu! avatar. If the image fails to load (no avatar set, network issues), the first letter of the name is shown instead. */
 export function Avatar({ url, name, size = 48 }: { url: string | null; name: string; size?: number }) {
     const [failed, setFailed] = useState(false);
     const style = { width: size, height: size };

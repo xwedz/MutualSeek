@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-// 開發時把 /api 轉發到後端（wrangler dev，port 3000），前端就不用處理 CORS 或寫死網址。
+// In development, /api is proxied to the backend (wrangler dev, port 3000), so the frontend needs no CORS or hard-coded URLs.
 export default defineConfig({
     plugins: [react(), tailwindcss()],
     server: {

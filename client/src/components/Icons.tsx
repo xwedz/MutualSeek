@@ -1,4 +1,4 @@
-// 線條風格的 SVG 圖示（不用 emoji 當圖示）。stroke 用 currentColor，顏色跟著文字走。
+// Line-style SVG icons (no emoji as icons). The stroke uses currentColor, so icons follow the text colour.
 
 import type { SVGProps } from 'react';
 
@@ -23,7 +23,7 @@ function Icon({ size = 16, children, ...props }: IconProps) {
     );
 }
 
-/** 標題旁的標誌：兩個交疊的圈代表「互相」，一白一粉 */
+/** The logo mark next to the title: two overlapping rings for "mutual", one white and one pink */
 export const LogoMark = ({ size = 22 }: { size?: number }) => (
     <svg width={(size * 40) / 26} height={size} viewBox="0 0 40 26" fill="none" strokeWidth={2.6} aria-hidden="true" className="shrink-0">
         <circle cx="13" cy="13" r="10" className="stroke-ink" />

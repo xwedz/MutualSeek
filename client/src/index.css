@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ---------- 設計 token：顏色、字型、動畫 ---------- */
+/* ---------- Design tokens: colours, fonts, animations ---------- */
 @theme {
     --color-bg: #0e0b12;
     --color-surface: #17121d;
@@ -18,12 +18,12 @@
 
     --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 
-    /* 進場用 backwards：等待 delay 時就先套用起始狀態（透明），結束後不鎖住 transform。
-       退場用 forwards：淡出後維持透明，直到元素被移除。 */
+    /* Entrances use backwards: the starting state (transparent) applies during the delay, and transform isn't locked afterwards.
+       Exits use forwards: the element stays transparent after fading out until it's removed. */
     --animate-fade-in: fade-in 0.35s ease-out backwards;
     --animate-fade-up: fade-up 0.45s var(--ease-out-expo) backwards;
     --animate-fade-out: fade-out-up 0.25s ease-in forwards;
-    --animate-fade-away: fade-away 0.2s ease-in forwards; /* 只淡出、不位移（視窗背後的遮罩用） */
+    --animate-fade-away: fade-away 0.2s ease-in forwards; /* fade only, no movement (for the backdrop behind dialogs) */
     --animate-spin-slow: spin 0.9s linear infinite;
 
     @keyframes fade-in {
@@ -44,10 +44,10 @@
     }
 }
 
-/* ---------- 減少動態 ----------
-   系統開啟「減少動畫」時：所有位移改成單純淡入淡出，時間照常（不用 0.01ms 那種寫法，
-   否則無限循環的動畫會變成每秒閃爍上百次）。
-   旋轉的讀取圖示改成緩慢的透明度呼吸，同樣是無限循環但很柔和。 */
+/* ---------- Reduced motion ----------
+   When the system asks for reduced motion, movement becomes a plain fade with normal durations (not the 0.01ms trick,
+   which turns infinite animations into hundreds of flashes a second).
+   The spinning loader becomes a slow opacity "breathe": still infinite, but gentle. */
 @media (prefers-reduced-motion: reduce) {
     :root {
         --animate-fade-up: fade-in 0.45s ease-out backwards;
@@ -62,12 +62,12 @@
         0%, 100% { opacity: 1; }
         50% { opacity: 0.35; }
     }
-    /* 卡片 hover 時的上浮改成不動，只保留顏色變化 */
+    /* Cards don't lift on hover; only the colour changes */
     .lift:hover { transform: none !important; }
 }
 
 html {
-    /* 永遠保留捲軸的寬度：內容變短、捲軸消失時（例如最後一頁只有 3 個人），置中的內容才不會往右偏移 */
+    /* Always reserve the scrollbar's width, so centred content doesn't shift when the scrollbar disappears (e.g. a short last page) */
     scrollbar-gutter: stable;
     background: var(--color-bg);
     color: var(--color-ink);
@@ -87,7 +87,7 @@ body {
     background: rgb(255 102 170 / 0.35);
 }
 
-/* 鍵盤操作時才顯示的焦點框 */
+/* Focus ring, only shown for keyboard navigation */
 :focus-visible {
     outline: 2px solid var(--color-pink);
     outline-offset: 2px;

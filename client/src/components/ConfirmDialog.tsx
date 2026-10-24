@@ -1,25 +1,25 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-const CLOSE_MS = 200; // 跟 index.css 的 fade-away 時間一致
+const CLOSE_MS = 200; // matches the fade-away duration in index.css
 
 interface Props {
     title: string;
-    children: ReactNode; // 說明文字
+    children: ReactNode; // the explanation
     confirmLabel: string;
-    /** 危險操作（例如刪除資料）：確認按鈕改成紅色，而且預設焦點放在「取消」，避免一按 Enter 就執行 */
+    /** Dangerous actions (e.g. deleting data): the confirm button turns red and focus starts on Cancel, so Enter alone can't trigger it */
     danger?: boolean;
-    /** 按下確認的當下立刻呼叫：例如要開新分頁時，瀏覽器只允許「使用者點擊當下」開，延遲開會被擋 */
+    /** Called immediately on confirm: e.g. browsers only allow opening a new tab during the click itself, and block delayed ones */
     onConfirm: () => void;
-    /** 淡出動畫結束後呼叫，父元件在這時候才把視窗移除 */
+    /** Called after the fade-out finishes; that's when the parent removes the dialog */
     onClose: () => void;
 }
 
-/** 確認視窗：背景遮罩淡入、視窗由下往上浮現；關閉時先淡出，再移除。 */
+/** Confirmation dialog: the backdrop fades in and the dialog rises into place; on close it fades out before being removed. */
 export function ConfirmDialog({ title, children, confirmLabel, danger = false, onConfirm, onClose }: Props) {
     const [closing, setClosing] = useState(false);
     const confirmRef = useRef<HTMLButtonElement>(null);
     const cancelRef = useRef<HTMLButtonElement>(null);
-    // 用 ref 存最新的 onClose，下面只在掛載時註冊一次的鍵盤事件也能呼叫到最新版本
+    // Keep the latest onClose in a ref so the key handler, registered once on mount below, always calls the current one
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
 
@@ -29,7 +29,7 @@ export function ConfirmDialog({ title, children, confirmLabel, danger = false, o
     };
 
     useEffect(() => {
-        // 打開時移動焦點，鍵盤使用者可以直接操作；關閉後把焦點還給原本的按鈕
+        // Move focus in on open so keyboard users can act right away; give it back to the original button on close
         const previous = document.activeElement as HTMLElement | null;
         (danger ? cancelRef : confirmRef).current?.focus();
         const onKey = (e: KeyboardEvent) => {

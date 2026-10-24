@@ -1,15 +1,15 @@
-// src/friends.ts —— 同步好友名單，找出「誰回加了、誰取消了 mutual」。
+// src/friends.ts — syncs a user's friend list and works out who followed back or removed them.
 //
-// 做法是「快照比對」：資料庫存著上次看到的名單（friendships），
-// 這次從 osu! 拿到新名單後逐一比對，把差異記成事件（friend_events）。
+// It compares snapshots: the database keeps the list seen last time (friendships), and each new list from osu!
+// is compared with it, with every difference recorded as an event (friend_events).
 //
-//   新出現的人          → added（你加了對方）；如果一出現就是 mutual，再記一筆 mutual
-//   mutual 從否變成是   → mutual（對方回加了）
-//   mutual 從是變成否   → unmutual（對方把你移除了）
-//   從名單消失          → removed（你把對方移除了）
+//   new on the list           → added (you added them); if they're already mutual, a mutual event too
+//   mutual goes false → true  → mutual (they added you back)
+//   mutual goes true → false  → unmutual (they removed you)
+//   gone from the list        → removed (you removed them)
 //
-// 第一次同步沒有「上次」可以比，只建立基準，不產生事件；
-// first_seen_at 記成 null，代表「開始追蹤前就是好友，不知道是什麼時候加的」。
+// The first sync has nothing to compare against, so it only records a baseline and creates no events;
+// first_seen_at is null, meaning "already a friend before tracking started, added at an unknown time".
 
 import type { Env } from './env';
 import { getFriends, getUserToken, OsuApiError, parseTime, type UserRelation } from './osu';
@@ -22,7 +22,7 @@ export interface FriendRow {
     avatar_url: string | null;
     country_code: string | null;
     last_visit: number | null;
-    mutual: number; // SQLite 沒有布林，0 / 1
+    mutual: number; // SQLite has no booleans: 0 / 1
     first_seen_at: number | null;
     mutual_since: number | null;
 }
@@ -39,7 +39,7 @@ export interface SyncResult {
 
 const toDay = (ms: number | null) => (ms === null ? null : Math.floor(ms / DAY_MS));
 
-/** 回傳 'relogin' 代表 token 失效，需要使用者重新登入。 */
+/** Returns 'relogin' when the token no longer works and the user has to log in again. */
 export async function syncFriends(env: Env, accountId: number): Promise<SyncResult | 'relogin'> {
     const db = env.DB;
     const token = await getUserToken(env, accountId);
@@ -49,7 +49,7 @@ export async function syncFriends(env: Env, accountId: number): Promise<SyncResu
     try {
         relations = await getFriends(token);
     } catch (err) {
-        // token 還沒過期卻被拒絕：多半是使用者在 osu! 設定頁撤銷了授權
+        // Rejected before it expired: usually the user revoked access in their osu! settings
         if (err instanceof OsuApiError && err.status === 401) return 'relogin';
         throw err;
     }
@@ -94,8 +94,8 @@ export async function syncFriends(env: Env, accountId: number): Promise<SyncResu
             events.push({ targetId: relation.target_id, username: target.username, type: relation.mutual ? 'mutual' : 'unmutual' });
         }
 
-        // 只有真的有變才寫入：D1 免費方案每天寫入 10 萬列，好友多的人每次同步全部重寫很浪費。
-        // 最後上線時間只比較「哪一天」，不然幾乎每次同步都會有人變動。
+        // Only write rows that actually changed: D1 Free allows 100,000 rows written a day, and rewriting a large
+        // friend list on every sync would waste it. Last visit only compares the day, or nearly every sync would change.
         const changed =
             mutualChanged ||
             old.username !== target.username ||
@@ -118,8 +118,8 @@ export async function syncFriends(env: Env, accountId: number): Promise<SyncResu
     const removed = [...remaining.values()];
     for (const row of removed) events.push({ targetId: row.target_id, username: row.username, type: 'removed' });
 
-    // 全部寫入放在同一個 batch：D1 的 batch 是一個交易（transaction），
-    // 中途任何一句失敗就整批取消，不會出現「名單更新了、事件卻沒記到」的半套狀態。
+    // All writes go in one batch: a D1 batch is a transaction, so if any statement fails the whole batch is rolled
+    // back and the list can never be updated without its events (or the other way round).
     const statements: D1PreparedStatement[] = [];
 
     if (upserts.length > 0) {

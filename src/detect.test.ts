@@ -1,10 +1,10 @@
-// 自動化測試：用 Vitest 執行（npm test）。
-// 每個 it(...) 是一個情境，expect(...) 寫下「應該得到什麼」。改了關鍵字後跑一次，就知道有沒有把原本對的弄壞。
+// Tests for detect.ts, run with Vitest (npm test).
+// Run them after changing the keywords to make sure nothing that used to match broke.
 
 import { describe, expect, it } from 'vitest';
 import { bbcodeToText, detectMutualMention, type Snippet } from './detect';
 
-/** 把摘錄還原成純文字，關鍵字用 [] 框起來，方便寫測試 */
+/** Turns a snippet back into plain text with keywords in [], to keep the tests readable */
 const render = (snippet: Snippet) => snippet.map(p => (p.hit ? `[${p.text}]` : p.text)).join('');
 
 describe('bbcodeToText', () => {
@@ -40,7 +40,7 @@ describe('detectMutualMention', () => {
     });
 
     it('also finds people who say no: the user reads the snippet and decides', () => {
-        // 工具不判斷語意。"no mutuals" 的人也會列出來，但摘錄會清楚顯示他們寫了什麼
+        // The tool doesn't judge meaning. "no mutuals" is listed too, but the snippet shows exactly what they wrote
         const result = detectMutualMention('no mutuals please');
         expect(result.mentioned).toBe(true);
         expect(render(result.snippets[0]!)).toBe('no [mutuals] please');
@@ -50,7 +50,7 @@ describe('detectMutualMention', () => {
         'I play osu! since 2015. Favorite mapper: Sotarks',
         'add me on discord',
         'follow me on twitch',
-        'mutually exclusive', // \b 避免比對到單字的一部分
+        'mutually exclusive', // \b keeps it from matching part of a word
         '',
     ])('finds nothing in "%s"', text => {
         expect(detectMutualMention(text).mentioned).toBe(false);
@@ -63,7 +63,7 @@ describe('detectMutualMention', () => {
     it('marks every keyword inside the snippet', () => {
         const result = detectMutualMention('Looking for mutuals, I always add back!');
         expect(result.count).toBe(2);
-        expect(result.snippets).toHaveLength(1); // 兩個關鍵字很近，合成同一段
+        expect(result.snippets).toHaveLength(1); // the two keywords are close, so they share one snippet
         expect(render(result.snippets[0]!)).toBe('Looking for [mutuals], I always [add back]!');
     });
 

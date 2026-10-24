@@ -9,7 +9,7 @@ import { TrackingView } from './components/TrackingView';
 import type { MeResponse, StatsResponse } from './types';
 
 type Tab = 'find' | 'track';
-// FAQ 是獨立的頁面（/faq，可以直接分享連結）；其他都在首頁，用分頁籤切換
+// The FAQ is its own page (/faq, so it can be linked directly); everything else is on the home page, switched with tabs
 type View = 'main' | 'faq';
 const viewFromPath = (): View => (window.location.pathname === '/faq' ? 'faq' : 'main');
 
@@ -24,7 +24,7 @@ export default function App() {
     const [tab, setTab] = useState<Tab>('find');
     const [view, setView] = useState<View>(viewFromPath);
     const [notice, setNotice] = useState<{ text: string; tone: 'error' | 'success' } | null>(null);
-    // 掃描進度與各國人數：頁尾和國家選單都要用，在這裡抓一次再往下傳
+    // Scanner progress and per-country counts: used by the footer and the country menu, so fetched once here
     const [stats, setStats] = useState<StatsResponse | null>(null);
 
     useEffect(() => {
@@ -34,7 +34,7 @@ export default function App() {
     useEffect(() => {
         fetchMe().then(setMe, () => setMe({ user: null }));
 
-        // 登入失敗時後端會導回 /?login=原因：顯示訊息後把網址清乾淨，重新整理才不會再跳一次
+        // A failed login redirects back with ?login=<reason>: show the message, then clean the URL so a reload doesn't show it again
         const params = new URLSearchParams(location.search);
         const reason = params.get('login');
         if (reason) {
@@ -43,7 +43,7 @@ export default function App() {
         }
     }, []);
 
-    // 瀏覽器的「上一頁 / 下一頁」在首頁和 FAQ 之間切換時，畫面跟著網址走
+    // When the browser's back / forward moves between the home page and the FAQ, the view follows the URL
     useEffect(() => {
         const onPopState = () => setView(viewFromPath());
         window.addEventListener('popstate', onPopState);
@@ -56,14 +56,14 @@ export default function App() {
 
     const user = me?.user ?? null;
 
-    /** 「Don't list me」：FAQ 和 Find people 都用這一個，兩邊顯示的狀態才會一致 */
+    /** "Don't list me": shared by the FAQ and Find people, so both always show the same state */
     async function updateListing(listed: boolean) {
         const { optedOut } = await setListing(listed);
         setMe(prev => (prev ? { ...prev, optedOut } : prev));
     }
 
     function openFaq(event: MouseEvent<HTMLAnchorElement>) {
-        event.preventDefault(); // 不重新載入整個網站，只切換畫面
+        event.preventDefault(); // switch views without reloading the site
         if (view === 'faq') return;
         window.history.pushState(null, '', '/faq');
         setView('faq');
@@ -77,7 +77,7 @@ export default function App() {
         setTab(next);
     }
 
-    // 資料刪除後：後端已經清掉登入狀態，這裡只要更新畫面
+    // After deleting data: the backend has already ended the session, so only the view needs updating
     function handleDeleted() {
         setMe({ user: null });
         setTab('find');
@@ -105,7 +105,7 @@ export default function App() {
                     </div>
                     <p className="mt-0.5 text-sm text-muted">Find osu! players looking for mutuals, and see who followed you back.</p>
                 </div>
-                {/* me 還沒載入時先留空，避免「Log in」按鈕閃一下又變成頭像 */}
+                {/* Empty until `me` loads, so the Log in button doesn't flash before turning into the avatar */}
                 {me && (
                     <div className="animate-fade-in">
                         {user ? (
@@ -168,7 +168,7 @@ export default function App() {
                         </button>
                     );
                 })}
-                {/* FAQ 是另一個頁面，不是第三個分頁：放在最右邊、顏色較淡、加圖示，跟分頁籤區分開 */}
+                {/* The FAQ is another page, not a third tab: placed at the far right, dimmer and with an icon, to set it apart from the tabs */}
                 <a
                     href="/faq"
                     onClick={openFaq}
@@ -188,7 +188,7 @@ export default function App() {
                 </a>
             </nav>
 
-            {/* key 換了就會重新掛載，觸發淡入，切換分頁不會突然跳 */}
+            {/* A new key remounts the content and replays the fade-in, so switching tabs never jumps */}
             <main key={view === 'faq' ? 'faq' : tab} className="mt-6 animate-fade-up">
                 {view === 'faq' && (
                     <FaqView loggedIn={Boolean(user)} optedOut={me?.optedOut ?? false} onSetListing={updateListing} />

@@ -9,9 +9,9 @@ interface Props {
 }
 
 /**
- * Find people 篩選列最右邊的「Don't list me」（FAQ 裡也有同樣的設定）。
- * 放在主畫面很顯眼，誤按的機會比較高，所以移除自己之前先跳確認視窗；沒登入時視窗改成說明並引導登入。
- * 「List me again」是恢復，不需要確認。
+ * "Don't list me" at the right end of the Find people filters (the FAQ has the same setting).
+ * It's prominent on the main screen and easier to hit by mistake, so removing yourself asks for confirmation first; when logged out the dialog explains and offers to log in.
+ * "List me again" only restores, so it needs no confirmation.
  */
 export function ListingButton({ loggedIn, optedOut, onSetListing }: Props) {
     const [confirming, setConfirming] = useState(false);
@@ -39,7 +39,7 @@ export function ListingButton({ loggedIn, optedOut, onSetListing }: Props) {
                 className="inline-flex items-center gap-1.5 rounded-xl px-2 py-2 text-sm text-muted transition-colors hover:text-ink disabled:opacity-60"
             >
                 {saving ? <Spinner size={14} /> : <EyeOffIcon size={14} />}
-                {/* key 換了就重新掛載並淡入，文字不會突然跳 */}
+                {/* A new key remounts and fades in, so the label never jumps */}
                 <span key={String(optedOut)} className="animate-fade-in">
                     {loggedIn && optedOut ? 'List me again' : "Don't list me"}
                 </span>

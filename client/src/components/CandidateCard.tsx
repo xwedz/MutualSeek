@@ -11,8 +11,8 @@ interface Props {
     index: number;
     leaving: boolean;
     copied: boolean;
-    showCountry: boolean; // 選「All countries」時顯示對方的國家
-    /** 點擊「Open profile」或名字時呼叫；父元件可以 preventDefault 改成先顯示說明視窗 */
+    showCountry: boolean; // show the player's country when "All countries" is selected
+    /** Called when "Open profile" or the name is clicked; the parent may preventDefault to show an explanation first */
     onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
     onCopy: () => void;
     onSkip: () => void;
@@ -21,7 +21,7 @@ interface Props {
 export function CandidateCard({ candidate: c, index, leaving, copied, showCountry, onOpen, onCopy, onSkip }: Props) {
     return (
         <li
-            // 進場依序錯開（最多錯開 8 張，避免往下捲時等太久）；按「略過」時淡出後才從列表移除
+            // Entrances are staggered (up to 8 cards, so scrolling down never waits long); a skipped card fades out before it's removed
             style={{ animationDelay: leaving ? '0ms' : `${Math.min(index, 8) * 45}ms` }}
             className={`lift rounded-2xl border border-line bg-surface p-4 transition duration-200 hover:-translate-y-0.5 hover:border-pink/40 ${
                 leaving ? 'animate-fade-out' : 'animate-fade-up'
@@ -44,7 +44,7 @@ export function CandidateCard({ candidate: c, index, leaving, copied, showCountr
                         {c.country_rank !== null && <span>#{formatNumber(c.country_rank)} in country</span>}
                         <span>{formatNumber(c.pp)}pp</span>
                         {c.follower_count !== null && <span>{formatNumber(c.follower_count)} followers</span>}
-                        {/* 候選人一定是 30 天內上線過的人；隱藏上線狀態的人看不到確切時間，只能說「這個月有上線」 */}
+                        {/* Candidates have always been online in the last 30 days; for players who hide their status the exact time is unknown, so it just says "this month" */}
                         <span>{c.last_visit === null ? 'active this month' : `seen ${timeAgo(c.last_visit)}`}</span>
                     </p>
                     {c.pm_friends_only === 1 && (
@@ -56,7 +56,7 @@ export function CandidateCard({ candidate: c, index, leaving, copied, showCountr
                 </div>
             </div>
 
-            {/* 對方個人頁面裡提到 mutual 的段落，關鍵字標成粉色：讓使用者在卡片上就能讀到對方怎麼寫 */}
+            {/* The part of their profile that mentions mutuals, keywords in pink, so users can read what they wrote right on the card */}
             {c.snippets.map((snippet, i) => (
                 <blockquote
                     key={i}
@@ -90,10 +90,10 @@ export function CandidateCard({ candidate: c, index, leaving, copied, showCountr
                     onClick={onCopy}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-pink/50"
                 >
-                    {/* 圖示與文字一起淡入切換，不要突然跳字 */}
+                    {/* Icon and text fade in together instead of the label jumping */}
                     <span key={copied ? 'copied' : 'copy'} className="inline-flex animate-fade-in items-center gap-1.5">
                         {copied ? <CheckIcon size={14} className="text-good" /> : <CopyIcon size={14} />}
-                        {/* 文字包在同一個 span 裡：不然外層 flex 的間距會加在 "Copy" 和 " message" 之間，變成兩倍寬的空白 */}
+                        {/* The text shares one span: otherwise the outer flex gap lands between "Copy" and " message" as a double-width space */}
                         <span>
                             {copied ? (
                                 'Copied'
@@ -105,7 +105,7 @@ export function CandidateCard({ candidate: c, index, leaving, copied, showCountr
                         </span>
                     </span>
                 </button>
-                {/* 手機上只顯示圖示，三顆按鈕才排得進同一行 */}
+                {/* Icon only on phones, so all three buttons fit on one row */}
                 <button
                     type="button"
                     onClick={onSkip}

@@ -14,16 +14,16 @@ import { SortSelect } from './SortSelect';
 const SORTS: readonly CandidateSort[] = ['recent', 'rank', 'followers'];
 
 const DEFAULT_TEMPLATE = "Hi {name}! Saw on your profile that you're open to mutuals, just added you :)";
-const LEAVE_MS = 250; // 跟 index.css 的 fade-out 時間一致
+const LEAVE_MS = 250; // matches the fade-out duration in index.css
 const COPIED_MS = 1600;
 
-/** 從網址讀頁碼（?page=3）；沒有或格式不對就是第 1 頁。 */
+/** Reads the page number from the URL (?page=3); missing or malformed means page 1. */
 function readPageFromUrl(): number {
     const page = Math.floor(Number(new URLSearchParams(window.location.search).get('page')));
     return Number.isFinite(page) && page >= 1 ? page : 1;
 }
 
-/** 把頁碼寫回網址。第 1 頁不寫參數，網址保持乾淨。 */
+/** Writes the page number back to the URL. Page 1 has no parameter, keeping the URL clean. */
 function writePageToUrl(page: number, mode: 'push' | 'replace') {
     const url = new URL(window.location.href);
     if (page === 1) url.searchParams.delete('page');
@@ -34,26 +34,26 @@ function writePageToUrl(page: number, mode: 'push' | 'replace') {
 
 interface Props {
     loggedIn: boolean;
-    defaultCountry: string | null; // 登入者自己的國家
+    defaultCountry: string | null; // the logged-in user's own country
     stats: StatsResponse | null;
-    optedOut: boolean; // 登入者選了「Don't list me」
+    optedOut: boolean; // the logged-in user chose "Don't list me"
     onSetListing: (listed: boolean) => Promise<void>;
 }
 
 export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSetListing }: Props) {
-    // 使用者自己選過的國家（記在瀏覽器）；沒選過就用自己的國家，沒登入就看所有國家
+    // The country the user picked (remembered in the browser); otherwise their own country, or all countries when logged out
     const [chosenCountry, setChosenCountry] = useLocalStorage<string | null>('filter.country', null);
     const country = chosenCountry ?? defaultCountry ?? 'all';
-    // 排序也記在瀏覽器；存的值不認得（例如之後拿掉了某個選項）就退回預設
+    // The sort is remembered too; an unknown stored value (e.g. an option removed later) falls back to the default
     const [storedSort, setSort] = useLocalStorage<CandidateSort>('filter.sort', 'recent');
     const sort = SORTS.includes(storedSort) ? storedSort : 'recent';
     const [template, setTemplate] = useLocalStorage('dm.template', DEFAULT_TEMPLATE);
     const [skipped, setSkipped] = useLocalStorage<number[]>('skipped', []);
-    // 使用者是否已經看過「請先讀對方寫了什麼」的說明視窗
+    // Whether the user has seen the "read what they wrote first" dialog
     const [readFirstSeen, setReadFirstSeen] = useLocalStorage('notice.readFirst', false);
     const [dialogFor, setDialogFor] = useState<Candidate | null>(null);
 
-    // 頁碼放在網址（?page=3），重新整理或按瀏覽器的「上一頁」都會回到同一頁
+    // The page lives in the URL (?page=3), so reloading or the browser's back button returns to the same page
     const [page, setPage] = useState(readPageFromUrl);
     const listRef = useRef<HTMLUListElement>(null);
 
@@ -65,10 +65,10 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
     const [copiedId, setCopiedId] = useState<number | null>(null);
     const [editingTemplate, setEditingTemplate] = useState(false);
     const copiedTimer = useRef<number | undefined>(undefined);
-    // 只採用最後一次請求的結果，避免舊結果晚到蓋掉新結果（例如快速切換國家時）
+    // Only the latest request's result is used, so a slow old response can't overwrite a newer one (e.g. switching countries quickly)
     const requestId = useRef(0);
 
-    // 換頁時不先清空列表：舊的卡片會稍微變暗表示載入中，新的到了再淡入取代，畫面不會突然空掉
+    // The list isn't cleared when changing pages: the old cards dim while loading and the new ones fade in, so the page never goes blank
     const load = useCallback(async () => {
         const id = ++requestId.current;
         setLoading(true);
@@ -89,16 +89,16 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
         load();
     }, [load]);
 
-    // 按瀏覽器的「上一頁 / 下一頁」時，網址的頁碼變了，同步回畫面
+    // The browser's back / forward buttons change the page in the URL; keep the view in sync
     useEffect(() => {
         const onPopState = () => setPage(readPageFromUrl());
         window.addEventListener('popstate', onPopState);
         return () => window.removeEventListener('popstate', onPopState);
     }, []);
 
-    // 換頁後要不要捲回列表頂端：等新的卡片畫好之後才決定。
-    // 如果在按下的瞬間就捲，新資料到了之後頁面高度會改變（例如最後一頁比較短），瀏覽器會自己再調整，
-    // 每次停的位置就會不一樣。
+    // Whether to scroll back to the top of the list after changing pages is decided once the new cards have rendered.
+    // Scrolling at the moment of the click lets the page height change afterwards (e.g. a shorter last page), the browser
+    // adjusts again, and the list ends up somewhere different each time.
     const scrollAfterLoad = useRef(false);
 
     useEffect(() => {
@@ -108,28 +108,28 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
         if (!list) return;
         const MARGIN = 16;
         const top = list.getBoundingClientRect().top;
-        // 列表頂端還在畫面裡就不動；被捲出畫面了才捲回去，而且每次都停在同一個位置（離畫面頂端 16px）
+        // Leave it alone if the top of the list is still visible; otherwise scroll back, always to the same spot (16px from the top)
         if (top >= MARGIN) return;
-        // 減少動態時直接跳過去，不做捲動動畫
+        // With reduced motion, jump instead of animating the scroll
         const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         window.scrollTo({ top: window.scrollY + top - MARGIN, behavior: smooth ? 'smooth' : 'auto' });
     }, [loading, candidates]);
 
-    /** 換頁：更新網址（留下瀏覽紀錄），新的卡片畫好後再視情況捲回列表頂端。 */
+    /** Change page: update the URL (adding a history entry), then scroll back to the list if needed once the cards render. */
     function goToPage(next: number) {
         scrollAfterLoad.current = true;
         setPage(next);
         writePageToUrl(next, 'push');
     }
 
-    /** 換國家：回到第 1 頁（取代目前的瀏覽紀錄，不然按「上一頁」會回到別的國家的頁碼）。 */
+    /** Change country: back to page 1 (replacing the history entry, or "back" would land on another country's page number). */
     function changeCountry(next: string) {
         setChosenCountry(next);
         setPage(1);
         writePageToUrl(1, 'replace');
     }
 
-    /** 換排序：同樣回到第 1 頁。 */
+    /** Change sort: also back to page 1. */
     function changeSort(next: CandidateSort) {
         setSort(next);
         setPage(1);
@@ -147,7 +147,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
         }, LEAVE_MS);
     }
 
-    // 第一次開個人頁面時，先攔下連結、顯示說明視窗；看過之後就讓連結照常開新分頁
+    // The first time a profile is opened, stop the link and show an explanation; after that links open normally
     function open(event: MouseEvent<HTMLAnchorElement>, candidate: Candidate) {
         if (readFirstSeen) return;
         event.preventDefault();
@@ -167,7 +167,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
 
     return (
         <section>
-            {/* 固定的提醒：工具只找「有提到」mutual 的人，想不想要由使用者讀了再判斷 */}
+            {/* A permanent reminder: the tool only finds players who *mention* mutuals; whether they want them is for the user to read and judge */}
             <p className="flex items-start gap-2.5 rounded-xl border border-pink/25 bg-pink/5 px-4 py-3 text-sm text-ink/90">
                 <InfoIcon size={16} className="mt-0.5 shrink-0 text-pink" />
                 <span>
@@ -192,7 +192,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
                 <ListingButton loggedIn={loggedIn} optedOut={optedOut} onSetListing={onSetListing} />
             </div>
 
-            {/* 用 grid-rows 0fr → 1fr 的技巧做高度展開動畫，不用量測元素高度 */}
+            {/* The grid-rows 0fr → 1fr trick animates the height without measuring the element */}
             <div
                 className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out-expo ${
                     editingTemplate ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
@@ -260,7 +260,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
                 ))}
             </ul>
 
-            {/* 第一次載入（還沒有任何卡片）才顯示轉圈；換頁時改成讓舊卡片變暗 */}
+            {/* The spinner only shows on the first load (no cards yet); on page changes the old cards dim instead */}
             {loading && candidates.length === 0 && (
                 <div className="mt-6 flex animate-fade-in justify-center text-muted">
                     <Spinner size={22} />
@@ -274,7 +274,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
                 </p>
             )}
 
-            {/* 網址的頁碼超過最後一頁（例如舊的書籤）*/}
+            {/* The page in the URL is past the last page (e.g. an old bookmark) */}
             {!loading && !error && candidates.length === 0 && page > 1 && (
                 <p className="mt-6 animate-fade-in rounded-2xl border border-dashed border-line px-4 py-10 text-center text-muted">
                     There's no one on this page.{' '}
@@ -284,7 +284,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
                 </p>
             )}
 
-            {/* 這一頁的人全部被略過了 */}
+            {/* Everyone on this page was skipped */}
             {!loading && candidates.length > 0 && visible.length === 0 && (
                 <p className="mt-6 animate-fade-in rounded-2xl border border-dashed border-line px-4 py-8 text-center text-muted">
                     You skipped everyone on this page.
@@ -292,14 +292,14 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
             )}
 
             {dialogFor && (
-                // 第一次開個人頁面時的說明，按確認後就不再出現。
-                // 只出現一次是刻意的：同樣的視窗每次都跳，使用者很快就會不看內容直接關掉（警告疲勞）。
+                // Shown the first time a profile is opened, and not again once confirmed.
+                // Showing it only once is deliberate: a dialog that appears every time soon gets dismissed unread (warning fatigue).
                 <ConfirmDialog
                     title={`Before you add ${dialogFor.username}`}
                     confirmLabel="I understand, open profile"
                     onConfirm={() => {
                         setReadFirstSeen(true);
-                        // 在點擊當下開分頁；noopener 讓新分頁拿不到這個頁面的 window 物件
+                        // Open the tab during the click; noopener keeps the new tab from reaching this page's window object
                         window.open(profileUrl(dialogFor.id), '_blank', 'noopener,noreferrer');
                     }}
                     onClose={() => setDialogFor(null)}

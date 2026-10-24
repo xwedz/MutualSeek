@@ -1,13 +1,13 @@
-// src/encoding.ts —— base64url 與 UTF-8 的轉換。
+// src/encoding.ts — base64url and UTF-8 conversion.
 //
-// Workers 預設沒有 Node 的 Buffer，所以用標準的 btoa / atob 自己包一層。
-// base64url 是把 base64 的 + / 換成 - _ 並拿掉結尾的 =，放進 cookie 或網址都不用再跳脫。
+// Workers don't have Node's Buffer by default, so this wraps the standard btoa / atob.
+// base64url replaces base64's + and / with - and _ and drops the trailing =, so it can go into cookies and URLs as is.
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-// Web Crypto 的參數要求「一般的 ArrayBuffer」，但 encode() 的型別宣告是較寬的 ArrayBufferLike，
-// 所以包一層 new Uint8Array(...) 讓型別符合。
+// Web Crypto expects a plain ArrayBuffer, but encode() is typed with the wider ArrayBufferLike,
+// so it's wrapped in new Uint8Array(...) to satisfy the types.
 export const utf8 = (text: string): Uint8Array<ArrayBuffer> => new Uint8Array(encoder.encode(text));
 export const fromUtf8 = (bytes: Uint8Array): string => decoder.decode(bytes);
 
@@ -18,7 +18,7 @@ export function toBase64Url(bytes: Uint8Array | ArrayBuffer): string {
     return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/** 格式錯誤時丟出例外，呼叫端自行決定要當成「無效」處理。 */
+/** Throws on malformed input; the caller decides whether that simply means "invalid". */
 export function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
     const base64 = text.replace(/-/g, '+').replace(/_/g, '/');
     const binary = atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4));

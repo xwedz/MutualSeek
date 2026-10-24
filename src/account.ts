@@ -1,36 +1,38 @@
-// src/account.ts —— 登出與刪除使用者資料。
+// src/account.ts — logging out and deleting a user's data.
 //
-// 使用者登入後，資料庫會保存三種資料：
-//   accounts       名稱、supporter 狀態、加密後的 token、最後同步時間
-//   friendships    好友名單的快照
-//   friend_events  誰回加了、誰取消了 mutual 的紀錄
+// After a user logs in, the database keeps three kinds of data:
+//   accounts       name, supporter status, encrypted tokens, last sync time
+//   friendships    snapshots of the friend list
+//   friend_events  history of who followed back or removed them
 //
-// 兩個層級：
-//   登出         → 撤銷並清除 token，保留好友快照與紀錄（下次登入可以接著追蹤）
-//   刪除我的資料 → 撤銷 token，並刪除上面三種資料裡跟這個人有關的全部內容，無法復原
+// Two levels:
+//   log out        → revoke and clear the tokens, keep the friend snapshots and history (tracking continues on next login)
+//   delete my data → revoke the tokens and delete everything above about this user; can't be undone
 
 import type { Env } from './env';
 import { getUserToken, revokeToken } from './osu';
 
 /**
- * 向 osu! 撤銷這個人的 token，並從資料庫清除。
- * 目前的同步只在使用者打開網站時進行，登出期間本來就用不到 token，所以清除沒有代價；下次登入會拿到新的。
+ * Revokes this user's token on osu! and clears it from the database.
+ * Syncing only happens while the user has the site open, so tokens aren't needed while logged out and clearing them
+ * costs nothing; the next login gets new ones.
  *
- * 注意：token 是「整個帳號共用」的，在一台裝置登出，其他裝置也要重新登入才能同步好友名單。
+ * Note: tokens are shared by the whole account, so logging out on one device means other devices have to log in
+ * again to sync.
  */
 export async function forgetTokens(env: Env, accountId: number): Promise<void> {
-    // 拿目前可用的 token 來撤銷（過期的話 getUserToken 會先換新的，再撤銷新的那個）。
-    // 拿不到（已經失效、網路錯誤）就跳過撤銷，但資料庫裡的 token 照樣清掉。
+    // Revoke whichever token currently works (if it expired, getUserToken refreshes it first and the new one is revoked).
+    // If none can be obtained (already invalid, network error), skip revoking but still clear the stored tokens.
     const token = await getUserToken(env, accountId).catch(() => null);
     const revoked = token ? await revokeToken(token) : false;
-    console.log(`[account] ${accountId} 的 token：${token ? (revoked ? '已向 osu! 撤銷' : '撤銷失敗') : '已經失效，不需撤銷'}`);
+    console.log(`[account] ${accountId} token: ${token ? (revoked ? 'revoked on osu!' : 'revoke failed') : 'already invalid, nothing to revoke'}`);
 
     await env.DB.prepare(`UPDATE accounts SET access_token = '', refresh_token = '', token_expires_at = 0 WHERE osu_user_id = ?`)
         .bind(accountId)
         .run();
 }
 
-/** 撤銷 token，並刪除這個人的所有資料。三個刪除放在同一個 batch（交易），不會只刪了一半。 */
+/** Revokes the tokens and deletes all of this user's data. The three deletes share one batch (a transaction), so it never half-finishes. */
 export async function deleteAccountData(env: Env, accountId: number): Promise<void> {
     await forgetTokens(env, accountId);
     await env.DB.batch([
@@ -38,5 +40,5 @@ export async function deleteAccountData(env: Env, accountId: number): Promise<vo
         env.DB.prepare('DELETE FROM friendships WHERE account_id = ?').bind(accountId),
         env.DB.prepare('DELETE FROM accounts WHERE osu_user_id = ?').bind(accountId),
     ]);
-    console.log(`[account] ${accountId} 的資料已全部刪除`);
+    console.log(`[account] all data for ${accountId} deleted`);
 }

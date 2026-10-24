@@ -1,11 +1,12 @@
 // src/auth.ts
 //
-// 用 osu! 的 OAuth（Authorization Code 流程）登入，流程和 Higher or Lower 相同：
-//   1. /api/auth/login    把使用者導去 osu! 的授權頁
-//   2. osu! 導回 /api/auth/callback?code=...&state=...
-//   3. 後端拿 code 換 token、呼叫 /me 取得身分，然後簽發自己的 session cookie
+// Login with osu! OAuth (authorization code flow):
+//   1. /api/auth/login    sends the user to osu!'s authorization page
+//   2. osu! redirects back to /api/auth/callback?code=...&state=...
+//   3. the backend exchanges the code for tokens, calls /me to see who it is, and issues its own session cookie
 //
-// 差別：這裡多要了 friends.read 權限，而且 token 會加密存進資料庫，之後才能定期讀好友名單。
+// The friends.read scope is requested too, and tokens are stored encrypted in the database so friend lists can be
+// read later.
 
 import { Hono } from 'hono';
 import type { AppEnv } from './env';
@@ -17,27 +18,27 @@ import { clearCookie, endSession, getSessionUser, readSealedCookie, setSealedCoo
 const STATE_COOKIE = 'osu_oauth_state';
 const STATE_TTL_MS = 10 * 60 * 1000;
 
-// identify：讀 /me 知道你是誰；friends.read：讀你的好友名單（含 mutual 欄位）。
-// 沒有任何「寫入」權限，所以這個工具不可能替你加好友、刪好友或發訊息。
+// identify: read /me to know who you are; friends.read: read your friend list (including the mutual field).
+// There are no write scopes, so this site can't add or remove friends or send messages for you.
 const SCOPES = 'identify friends.read';
 
-// Redirect URI 必須跟 osu! OAuth 應用程式設定裡登記的完全一致。
-// 沒有設定 OSU_REDIRECT_URI 時，就用網站自己的網址（部署後前後端同一個網址）。
+// The redirect URI must exactly match the one registered in the osu! OAuth application.
+// Without OSU_REDIRECT_URI the site's own origin is used (frontend and backend share one URL in production).
 const redirectUri = (c: { env: AppEnv['Bindings']; req: { url: string } }) =>
     c.env.OSU_REDIRECT_URI || `${new URL(c.req.url).origin}/api/auth/callback`;
 
 const auth = new Hono<AppEnv>();
 
-// 登入後要回到哪一頁（?return=faq）。只接受清單裡的值：
-// 如果接受任意網址，別人就能做出「看起來是 MutualSeek 的登入連結」，登入後卻把人導去其他網站（open redirect）。
+// Where to go after logging in (?return=faq). Only values from this list are accepted: accepting any URL would let
+// someone craft a login link that looks like MutualSeek but sends people to another site afterwards (an open redirect).
 const RETURN_PATHS: Record<string, string> = { faq: '/faq' };
 
 auth.get('/login', async c => {
     if (!c.env.OSU_CLIENT_ID) {
         return c.json({ error: 'Login is not configured on the server' }, 500);
     }
-    // state 是防 CSRF 的隨機值：導去 osu! 前先存在 cookie，導回來時比對，
-    // 確保這次授權是我們自己發起的，而不是別人塞給使用者的連結。
+    // state is a random value against CSRF: stored in a cookie before going to osu! and compared on the way back,
+    // so the authorization is known to have started here and not from a link someone else planted.
     const state = toBase64Url(crypto.getRandomValues(new Uint8Array(16)));
     const returnTo = RETURN_PATHS[c.req.query('return') ?? ''] ?? '/';
     await setSealedCookie(c, STATE_COOKIE, 'state', { state, returnTo }, STATE_TTL_MS);
@@ -58,11 +59,11 @@ auth.get('/callback', async c => {
     clearCookie(c, STATE_COOKIE);
 
     const frontend = c.env.FRONTEND_URL || '';
-    // 再檢查一次：cookie 雖然有簽章，但只認清單裡的路徑
+    // Checked again: the cookie is signed, but only paths from the list are honoured
     const returnTo = Object.values(RETURN_PATHS).includes(saved?.returnTo as string) ? (saved?.returnTo as string) : '/';
     const fail = (reason: string) => c.redirect(`${frontend}${returnTo}?login=${reason}`);
 
-    if (error) return fail('denied'); // 使用者在授權頁按了拒絕
+    if (error) return fail('denied'); // the user declined on the authorization page
     if (!code || !saved || saved.state !== state) return fail('invalid');
 
     try {
@@ -82,13 +83,14 @@ auth.get('/callback', async c => {
         });
         return c.redirect(`${frontend}${returnTo}`);
     } catch (err) {
-        console.error('osu! 登入失敗:', err);
+        console.error('osu! login failed:', err);
         return fail('error');
     }
 });
 
-// 登出：除了清掉瀏覽器的 cookie，也向 osu! 撤銷 token 並從資料庫清除（好友快照與紀錄保留）。
-// 用 POST 而不是 GET：cookie 設了 SameSite=Lax，其他網站無法替使用者送出跨站 POST，避免被惡意登出。
+// Logout: besides clearing the cookie, the token is revoked on osu! and cleared from the database (the friend
+// snapshot and history are kept). POST rather than GET: the cookie is SameSite=Lax, so other sites can't send a
+// cross-site POST on the user's behalf to log them out.
 auth.post('/logout', async c => {
     const user = await getSessionUser(c);
     if (user) await forgetTokens(c.env, user.osuUserId);

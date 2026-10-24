@@ -1,7 +1,7 @@
-// src/osu.ts —— osu! API v2 的型別與呼叫方式。
+// src/osu.ts — osu! API v2 types and calls.
 //
-// 型別只宣告我們真的會用到的欄位（osu! 回傳的欄位多很多）。
-// 欄位名稱對照 osu-web 原始碼的 UserCompactTransformer / UserRelationTransformer。
+// Types only declare the fields we actually use (osu! returns many more).
+// Field names follow osu-web's UserCompactTransformer / UserRelationTransformer.
 
 import type { Env } from './env';
 import { decryptToken, encryptToken } from './tokenCrypto';
@@ -9,8 +9,8 @@ import { decryptToken, encryptToken } from './tokenCrypto';
 const OSU = 'https://osu.ppy.sh';
 
 /**
- * /friends 在 x-api-version >= 20241022 時，回傳的是帶 `mutual` 欄位的 UserRelation，
- * 舊版本只回傳使用者列表、沒有 mutual。這是整個「追蹤回加」功能的基礎。
+ * With x-api-version >= 20241022, /friends returns UserRelation objects that include a `mutual` field;
+ * older versions only return a list of users without it. The whole follow-back feature relies on this.
  */
 const FRIENDS_API_VERSION = '20241022';
 
@@ -19,21 +19,21 @@ export interface OsuUserCompact {
     username: string;
     avatar_url: string;
     country_code: string;
-    // 30 天內上線過（osu-web 的 User::isActive）。官方網站排行榜上名字變暗就是這個值為 false。
-    // 用的是真實的最後上線時間，對方隱藏上線狀態時也照樣有值。
+    // Online in the last 30 days (osu-web's User::isActive); false is what greys out a name in the rankings.
+    // It uses the real last visit time, so it's set even when the player hides their online status.
     is_active: boolean;
     is_bot: boolean;
     is_deleted: boolean;
     is_supporter: boolean;
-    last_visit: string | null; // 對方隱藏上線狀態時是 null
+    last_visit: string | null; // null when the player hides their online status
     pm_friends_only: boolean;
 }
 
 export interface OsuUser extends OsuUserCompact {
     follower_count: number;
-    has_supported: boolean; // 現在或過去曾經是 supporter（排行榜的資料沒有這個欄位）
+    has_supported: boolean; // has had supporter now or in the past (ranking data doesn't include this)
     page: { html: string; raw: string };
-    // /users/{id}/{mode} 會帶上該模式的統計（排名、pp），掃描時順便更新，排行榜就不用每次重寫這些欄位
+    // /users/{id}/{mode} includes that mode's statistics (rank, pp), which are refreshed while scanning
     statistics?: { global_rank: number | null; country_rank: number | null; pp: number | null };
 }
 
@@ -55,7 +55,7 @@ export interface RankingEntry {
 
 export interface RankingResponse {
     ranking: RankingEntry[];
-    cursor: { page: number } | null; // null = 已經是最後一頁
+    cursor: { page: number } | null; // null = this is the last page
     total: number;
 }
 
@@ -68,13 +68,13 @@ export interface UserRelation {
 
 interface TokenResponse {
     access_token: string;
-    refresh_token?: string; // client credentials 沒有 refresh token
-    expires_in: number; // 秒
+    refresh_token?: string; // client credentials tokens have no refresh token
+    expires_in: number; // seconds
 }
 
 export class OsuApiError extends Error {
     constructor(public status: number, path: string, body: string) {
-        super(`osu! API ${path} 失敗 (${status}): ${body.slice(0, 200)}`);
+        super(`osu! API ${path} failed (${status}): ${body.slice(0, 200)}`);
     }
 }
 
@@ -100,24 +100,24 @@ export function requestToken(env: Env, params: Record<string, string>): Promise<
     });
 }
 
-/** osu! 的 last_visit（ISO 字串）轉成 Unix 毫秒；null 或無法解析時回傳 null。 */
+/** Converts osu!'s last_visit (an ISO string) to Unix milliseconds; null if missing or unparseable. */
 export function parseTime(value: string | null): number | null {
     if (!value) return null;
     const ms = Date.parse(value);
     return Number.isNaN(ms) ? null : ms;
 }
 
-// ---------- App 自己的 token（背景掃描用） ----------
+// ---------- The app's own token (for the background scanner) ----------
 
 const APP_TOKEN_KEY = 'osu:app_token';
-const EXPIRY_MARGIN_MS = 5 * 60 * 1000; // 提早 5 分鐘換新，避免剛好在請求途中過期
+const EXPIRY_MARGIN_MS = 5 * 60 * 1000; // renew 5 minutes early so a token never expires mid-request
 
 /**
- * 背景掃描不代表任何使用者，所以用 client credentials 換一個只能讀公開資料的 token。
- * token 有效期約一天，存在 kv 表裡重複使用，不用每分鐘都重新申請。
+ * The scanner doesn't act for any user, so it uses client credentials to get a token that can only read public data.
+ * The token lasts about a day and is cached in the kv table instead of being requested every minute.
  *
- * forceNew：不管快取、直接重新申請。用在 API 回 401 的時候：token 可能在過期前就失效了
- * （例如換了 OAuth 應用程式、重新產生了 client secret），快取的過期時間就不準了。
+ * forceNew: ignore the cache and request a new one. Used when the API returns 401: the token may have stopped working
+ * before it expired (e.g. the OAuth app was replaced or the client secret regenerated), so the cached expiry is wrong.
  */
 export async function getAppToken(env: Env, forceNew = false): Promise<string> {
     const row = forceNew ? null : await env.DB.prepare('SELECT value FROM kv WHERE key = ?').bind(APP_TOKEN_KEY).first<{ value: string }>();
@@ -140,9 +140,9 @@ export async function getAppToken(env: Env, forceNew = false): Promise<string> {
 }
 
 /**
- * 向 osu! 撤銷這個 token（連同它的 refresh token，osu-web 的 revokeRecursive）。
- * 這個 API 允許任何 token 撤銷自己（require-scopes:any），不需要特別的權限。
- * 回傳是否成功；失敗不丟例外，因為撤銷是「盡量做」，不能因此擋住登出或刪除資料。
+ * Revokes this token on osu!, together with its refresh token (osu-web's revokeRecursive).
+ * Any token may revoke itself (require-scopes:any), so no special scope is needed.
+ * Returns whether it worked. It never throws: revoking is best effort and must not block logging out or deleting data.
  */
 export async function revokeToken(accessToken: string): Promise<boolean> {
     try {
@@ -156,7 +156,7 @@ export async function revokeToken(accessToken: string): Promise<boolean> {
     }
 }
 
-// ---------- 使用者的 token（讀好友名單用） ----------
+// ---------- Users' tokens (for reading friend lists) ----------
 
 interface AccountTokenRow {
     access_token: string;
@@ -164,13 +164,13 @@ interface AccountTokenRow {
     token_expires_at: number;
 }
 
-/** 登入成功時呼叫：建立或更新帳號，並把 token 加密存起來。 */
+/** Called after a successful login: creates or updates the account and stores its tokens encrypted. */
 export async function saveAccount(
     env: Env,
     user: { id: number; username: string; is_supporter: boolean },
     tokens: TokenResponse,
 ): Promise<void> {
-    if (!tokens.refresh_token) throw new Error('授權碼流程應該要拿到 refresh token');
+    if (!tokens.refresh_token) throw new Error('The authorization code flow should return a refresh token');
     const now = Date.now();
     await env.DB.prepare(
         `INSERT INTO accounts (osu_user_id, username, is_supporter, access_token, refresh_token, token_expires_at, created_at)
@@ -195,9 +195,9 @@ export async function saveAccount(
 }
 
 /**
- * 取得某位使用者可用的 access token。過期了就用 refresh token 換新的。
- * 回傳 null 代表需要使用者重新登入：從沒登入過、登出時已經清除了 token（見 account.ts），
- * 或 refresh token 也失效了（例如對方在 osu! 撤銷了授權）。
+ * Returns a usable access token for a user, refreshing it with the refresh token if it has expired.
+ * null means the user has to log in again: they never logged in, their tokens were cleared on logout (see account.ts),
+ * or the refresh token no longer works (e.g. they revoked access on osu!).
  */
 export async function getUserToken(env: Env, accountId: number): Promise<string | null> {
     const row = await env.DB.prepare('SELECT access_token, refresh_token, token_expires_at FROM accounts WHERE osu_user_id = ?')
@@ -216,7 +216,7 @@ export async function getUserToken(env: Env, accountId: number): Promise<string 
             refresh_token: await decryptToken(env.TOKEN_ENCRYPTION_KEY, row.refresh_token),
         });
     } catch (err) {
-        // 400 / 401：refresh token 無效，只能請使用者重新登入。其他錯誤（osu! 掛了、網路問題）往上丟。
+        // 400 / 401: the refresh token is invalid, so the user has to log in again. Other errors (osu! down, network) are rethrown.
         if (err instanceof OsuApiError && (err.status === 400 || err.status === 401)) return null;
         throw err;
     }
@@ -224,7 +224,7 @@ export async function getUserToken(env: Env, accountId: number): Promise<string 
     await env.DB.prepare('UPDATE accounts SET access_token = ?1, refresh_token = ?2, token_expires_at = ?3 WHERE osu_user_id = ?4')
         .bind(
             await encryptToken(env.TOKEN_ENCRYPTION_KEY, res.access_token),
-            // osu! 換發時會給新的 refresh token；萬一沒給，就沿用舊的
+            // osu! issues a new refresh token on refresh; if it ever doesn't, keep the old one
             res.refresh_token ? await encryptToken(env.TOKEN_ENCRYPTION_KEY, res.refresh_token) : row.refresh_token,
             Date.now() + res.expires_in * 1000,
             accountId,
