@@ -101,7 +101,7 @@ app.post('/api/listing', async c => {
 /**
  * Candidates: players whose profile mentions mutuals (whether they actually want them is for the user to judge from
  * the excerpt). The players table only holds active players (see crawler.ts), so there's no last-visit filter here.
- * When logged in, players already on your friend list (as of your last sync) and you yourself are excluded.
+ * Requires login and accepted guidelines. Players already on your friend list (as of your last sync) and you yourself are excluded.
  * Sort (sort=): each order has a matching index (migrations 0002, 0003, 0005); DESC puts nulls last.
  *   Every order ends with id so ties (e.g. equal follower counts) keep a fixed order and pages never repeat or skip anyone.
  *   recent    most recently online first (default; players who hide their online status come last)
@@ -116,7 +116,13 @@ const CANDIDATE_ORDER = {
 } as const;
 
 app.get('/api/candidates', async c => {
+    // The list is only for logged-in users who accepted the guidelines, so it can't be browsed or collected anonymously.
+    // The frontend already waits for both; checking here as well keeps the API itself from handing the list out.
     const user = await getSessionUser(c);
+    const account = user && (await loadAccount(c, user));
+    if (!user || !account) return c.json({ error: 'Please log in first.' }, 401);
+    if (account.guidelines_version < GUIDELINES_VERSION) return c.json({ error: 'Please accept the guidelines first.' }, 403);
+
     // page starts at 1; anything malformed means page 1. The upper bound only guards against absurd numbers
     const page = Math.min(Math.max(Math.floor(Number(c.req.query('page'))) || 1, 1), 100_000);
     const offset = (page - 1) * PAGE_SIZE;
@@ -142,7 +148,7 @@ app.get('/api/candidates', async c => {
          LIMIT ?2 OFFSET ?3`,
     )
         // ?4 only exists in the SQL when filtering by country, so the fourth parameter is only bound then
-        .bind(...([user?.osuUserId ?? 0, PAGE_SIZE + 1, offset, ...(byCountry ? [country] : [])] as const))
+        .bind(...([user.osuUserId, PAGE_SIZE + 1, offset, ...(byCountry ? [country] : [])] as const))
         .all<Record<string, unknown> & { mutual_snippet: string | null }>();
 
     // One extra row is fetched: if row PAGE_SIZE + 1 exists, there's a next page

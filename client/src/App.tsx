@@ -64,12 +64,16 @@ export default function App() {
     }
 
     /**
-     * "I understand" on the guidelines: the list shows right away and the server records it in the background.
-     * If saving fails, the only effect is seeing the guidelines again next time, so the list isn't held back for it.
+     * "I understand" on the guidelines. The list only loads once the server has saved it: /api/candidates refuses
+     * users who haven't accepted, so loading the list before the save finishes could be refused.
      */
-    function handleAcceptGuidelines() {
-        setMe(prev => (prev?.account ? { ...prev, account: { ...prev.account, guidelinesAccepted: true } } : prev));
-        acceptGuidelines().catch(() => {});
+    async function handleAcceptGuidelines() {
+        try {
+            await acceptGuidelines();
+            setMe(prev => (prev?.account ? { ...prev, account: { ...prev.account, guidelinesAccepted: true } } : prev));
+        } catch {
+            setNotice({ text: 'Could not save that. Please reload the page and try again.', tone: 'error' });
+        }
     }
 
     /** Switch to the FAQ without reloading the site; a hash (#slug) opens that question */
