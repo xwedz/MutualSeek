@@ -53,12 +53,30 @@ export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
             ),
         },
         {
-            q: "Why do some listed players say they don't want mutuals?",
+            q: 'Does it collect anything private?',
             a: (
                 <p>
-                    The scanner only looks for words like "mutual" or "follow back". It can't tell whether someone is asking for mutuals or
-                    saying no to them, so please read the excerpt, or their profile, before adding anyone.
+                    No. It only reads what anyone can see on an osu! profile: username, avatar, country, rank, pp, follower count, when they
+                    were last online (if they show it), whether they accept messages from non-friends, and the part of their profile page that
+                    mentions mutuals. If you log in, it also reads your own friend list, which is only shown to you.
                 </p>
+            ),
+        },
+        {
+            q: "Even so, I don't want to be listed. What can I do?",
+            a: (
+                <>
+                    <p>
+                        That's completely fine. Log in with osu! and choose <b>Don't list me</b>, either below or at the right end of the
+                        filters on Find people. You're removed right away, and the scanner won't add you again. You can undo it at any time.
+                    </p>
+                    <p>
+                        Logging in also asks to read your friend list, because the site uses one login for everything. You can log out right
+                        afterwards, which revokes that access. Removing the mention from your profile works too, but the list only updates on the
+                        next monthly scan.
+                    </p>
+                    <ListingControl loggedIn={loggedIn} optedOut={optedOut} onSetListing={onSetListing} />
+                </>
             ),
         },
         {
@@ -85,33 +103,6 @@ export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
                         <li>wrote about mutuals in another language, or inside an image</li>
                         <li>are already on your friend list (when you're logged in)</li>
                     </ul>
-                </>
-            ),
-        },
-        {
-            q: 'Does it collect anything private?',
-            a: (
-                <p>
-                    No. It only reads what anyone can see on an osu! profile: username, avatar, country, rank, pp, follower count, when they
-                    were last online (if they show it), whether they accept messages from non-friends, and the part of their profile page that
-                    mentions mutuals. If you log in, it also reads your own friend list, which is only shown to you.
-                </p>
-            ),
-        },
-        {
-            q: "Even so, I don't want to be listed. What can I do?",
-            a: (
-                <>
-                    <p>
-                        That's completely fine. Log in with osu! and choose <b>Don't list me</b>, either below or at the right end of the
-                        filters on Find people. You're removed right away, and the scanner won't add you again. You can undo it at any time.
-                    </p>
-                    <p>
-                        Logging in also asks to read your friend list, because the site uses one login for everything. You can log out right
-                        afterwards, which revokes that access. Removing the mention from your profile works too, but the list only updates on the
-                        next monthly scan.
-                    </p>
-                    <ListingControl loggedIn={loggedIn} optedOut={optedOut} onSetListing={onSetListing} />
                 </>
             ),
         },
