@@ -16,6 +16,7 @@ interface Props {
 }
 
 export function CandidateCard({ candidate: c, index, leaving, copied, showCountry, onCopy, onSkip }: Props) {
+    const friendsOnly = c.pm_friends_only === 1;
     return (
         <li
             // Entrances are staggered (up to 8 cards, so scrolling down never waits long); a skipped card fades out before it's removed
@@ -43,10 +44,12 @@ export function CandidateCard({ candidate: c, index, leaving, copied, showCountr
                         {/* Candidates have always been online in the last 30 days; for players who hide their status the exact time is unknown, so it just says "this month" */}
                         <span>{c.last_visit === null ? 'active this month' : `seen ${timeAgo(c.last_visit)}`}</span>
                     </p>
-                    {c.pm_friends_only === 1 && (
+                    {/* On osu!, "friends" here means people *they* added (osu-web checkChatPmStart: $target->hasFriended($user)),
+                        so adding them yourself doesn't let you message them */}
+                    {friendsOnly && (
                         <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-warn">
                             <LockIcon size={13} />
-                            Only accepts messages from friends: add them first, then message
+                            Blocks messages from people not on their friends list
                         </p>
                     )}
                 </div>
@@ -80,26 +83,29 @@ export function CandidateCard({ candidate: c, index, leaving, copied, showCountr
                     Open profile
                     <ExternalIcon size={14} />
                 </a>
-                <button
-                    type="button"
-                    onClick={onCopy}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-pink/50"
-                >
-                    {/* Icon and text fade in together instead of the label jumping */}
-                    <span key={copied ? 'copied' : 'copy'} className="inline-flex animate-fade-in items-center gap-1.5">
-                        {copied ? <CheckIcon size={14} className="text-good" /> : <CopyIcon size={14} />}
-                        {/* The text shares one span: otherwise the outer flex gap lands between "Copy" and " message" as a double-width space */}
-                        <span>
-                            {copied ? (
-                                'Copied'
-                            ) : (
-                                <>
-                                    Copy<span className="hidden sm:inline"> message</span>
-                                </>
-                            )}
+                {/* No Copy message for players who block messages from non-friends: it couldn't be sent */}
+                {!friendsOnly && (
+                    <button
+                        type="button"
+                        onClick={onCopy}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-pink/50"
+                    >
+                        {/* Icon and text fade in together instead of the label jumping */}
+                        <span key={copied ? 'copied' : 'copy'} className="inline-flex animate-fade-in items-center gap-1.5">
+                            {copied ? <CheckIcon size={14} className="text-good" /> : <CopyIcon size={14} />}
+                            {/* The text shares one span: otherwise the outer flex gap lands between "Copy" and " message" as a double-width space */}
+                            <span>
+                                {copied ? (
+                                    'Copied'
+                                ) : (
+                                    <>
+                                        Copy<span className="hidden sm:inline"> message</span>
+                                    </>
+                                )}
+                            </span>
                         </span>
-                    </span>
-                </button>
+                    </button>
+                )}
                 {/* Icon only on phones, so all three buttons fit on one row */}
                 <button
                     type="button"
