@@ -9,7 +9,7 @@
     "client": "npm --prefix client run dev",
     "build": "npm --prefix client run build",
     "deploy": "npm run build && wrangler deploy",
-    "typecheck": "tsc --noEmit && npm --prefix client run typecheck",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test && npm --prefix client run typecheck",
     "test": "vitest run",
     "cf-typegen": "wrangler types --include-env=false",
     "db:migrate": "wrangler d1 migrations apply osu-mutual-tool --local",
@@ -19,6 +19,7 @@
     "hono": "^4.13.13"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.7",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5",
     "wrangler": "^4.151.2"

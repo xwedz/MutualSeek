@@ -70,6 +70,13 @@ curl "http://localhost:3000/cdn-cgi/handler/scheduled?cron=*+*+*+*+*"
 
 Run the checks with `npm test` and `npm run typecheck`.
 
+## Tests
+
+Tests run inside the Workers runtime with [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/), each test file against its own fresh local D1 database built from `migrations/`. They never touch the production database or the osu! API, and don't need `.dev.vars`.
+
+- `src/**/*.test.ts`: unit tests (mutual-mention detection, ranking page handling, the shuffle start point).
+- `test/**/*.test.ts`: API tests that send real requests to the Worker: who can see the list (login and guidelines), paging, the shuffled order, filters, hiding friends, and Don't list me.
+
 ## Deploying
 
 1. Create the database with `npx wrangler d1 create osu-mutual-tool`, put its id in `wrangler.jsonc`, and run `npm run db:migrate:remote`.
