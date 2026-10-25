@@ -76,6 +76,7 @@ Tests run inside the Workers runtime with [`@cloudflare/vitest-plugin`](https://
 
 - `src/**/*.test.ts`: unit tests (mutual-mention detection, ranking page handling, the shuffle start point).
 - `test/**/*.test.ts`: API tests that send real requests to the Worker: who can see the list (login and guidelines), paging, the shuffled order, filters, hiding friends, and Don't list me.
+- `test/crawler.test.ts`: the scanner against a fake osu! API (`test/fake-osu.ts`): at most 9 requests per run one second apart, the 30-day gap between passes, what gets stored or removed, skipping players who never had supporter, and how API errors are handled.
 
 ## Deploying
 
