@@ -93,6 +93,14 @@ Tests run inside the Workers runtime with [`@cloudflare/vitest-plugin`](https://
 
 Scanning can be paused without losing progress by setting `SCAN_PAUSE` in `wrangler.jsonc` (`"now"`, or a country code to stop after that country) and deploying again.
 
+## License
+
+Copyright (C) 2026 xwedz
+
+The code is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). In short: you can use, modify and share it, including commercially, but if you share a modified version or run one as a website for others, you must make its full source code available under the same license.
+
+Player data and avatars come from the official [osu!](https://osu.ppy.sh/) API, belong to osu! / ppy and their players, and aren't covered by this license.
+
 ## Disclaimer
 
 MutualSeek is an independent fan project and is not affiliated with osu! or ppy Pty Ltd.

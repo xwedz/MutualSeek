@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "MutualSeek: find osu! players looking for mutuals and track who followed you back (Cloudflare Workers + D1)",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --port 3000 --test-scheduled",
