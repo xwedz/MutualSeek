@@ -23,8 +23,7 @@ export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
             a: (
                 <>
                     <p>
-                        To protect the players on the list. Showing it only to logged-in osu! players keeps it from being browsed or collected
-                        anonymously, and makes it easier to stop anyone who misuses it.
+                        The list is only shown to logged-in osu! players, so it can't be browsed or collected anonymously.
                     </p>
                     <p>
                         Logging in only lets the site see who you are and read your friend list. It can't add friends or send messages for you,

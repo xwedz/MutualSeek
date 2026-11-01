@@ -6,7 +6,7 @@ Many players write things like "add me for mutuals" or "I follow back" on their 
 
 ## Features
 
-- **Find people**: players whose profile mentions mutuals, with the matching part of their profile highlighted. Filter by country or by who was online in the past week, and copy a message template to send on osu!. The list is shuffled so the same few players aren't contacted by everyone (see below). To protect the listed players, the list is only shown after logging in and accepting a few short guidelines (read what they wrote, one message is enough, be kind).
+- **Find people**: players whose profile mentions mutuals, with the matching part of their profile highlighted. Filter by country or by who was online in the past week, and copy a message template to send on osu!. The list is shuffled so the same few players aren't contacted by everyone (see below). The list is only shown after logging in and accepting a few short guidelines (read what they wrote, don't take it personally, be kind).
 - **Follow-backs**: log in with osu! to see who added you back, who removed you, and who never did, by comparing your friend list between syncs.
 - **Don't list me**: any listed player can log in and remove themselves from the list. Future scans won't add them back.
 - **Read-only**: the site only asks for `identify` and `friends.read`. It can't add friends or send messages for you.

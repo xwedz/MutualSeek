@@ -87,7 +87,7 @@ export function LockedCandidatesView({ optedOut, onSetListing, onWhyLogIn }: Pro
                     onConfirm={() => window.location.assign(LOGIN_URL)}
                     onClose={() => setAsking(false)}
                 >
-                    <p>To protect the players on this list, Find people is only available to logged-in osu! players.</p>
+                    <p>Log in with osu! to use Find people.</p>
                     <p>
                         The site can read your friend list, but it can't add friends or send messages for you. You can log out at any time.{' '}
                         <a href={WHY_URL} onClick={whyLogIn} className="font-medium text-pink transition-colors hover:text-pink-2">

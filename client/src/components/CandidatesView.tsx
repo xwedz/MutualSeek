@@ -307,8 +307,7 @@ export function CandidatesView({ loggedIn, defaultCountry, stats, optedOut, onSe
                             some only do it to say no.
                         </li>
                         <li>
-                            <span className={HIGHLIGHT}>One message is enough.</span> If they don't follow back or say no, let it go. Don't
-                            message again or ask why.
+                            <span className={HIGHLIGHT}>Don't take it personally.</span> Not everyone follows everyone back, and that's okay.
                         </li>
                         <li>
                             <span className={HIGHLIGHT}>Be kind.</span> Everyone on this list is a real person, and osu! lets them block and
