@@ -5,6 +5,12 @@
     "main": "src/index.ts",
     "compatibility_date": "2026-10-01",
 
+    // The site's address. Cloudflare creates the DNS record and HTTPS certificate for it.
+    // The OAuth callback follows the address in use (see src/auth.ts), so production's osu! OAuth app must list
+    // https://mutualseek.xwedz.dev/api/auth/callback as its callback URL.
+    "routes": [{ "pattern": "mutualseek.xwedz.dev", "custom_domain": true }],
+    "workers_dev": false,
+
     // The frontend (client/dist) is served by Cloudflare directly; static assets are free and don't count as requests.
     // Only /api/* runs the Worker; other paths without a file get index.html (single-page application).
     "assets": {
