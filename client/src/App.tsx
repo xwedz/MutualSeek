@@ -238,7 +238,7 @@ export default function App() {
                             <p className="text-lg font-semibold">See who followed you back</p>
                             <p className="mx-auto mt-2 max-w-md text-sm text-muted">
                                 Log in with osu! and this page compares your friend list over time: who followed you back, who removed
-                                you, and who never did. It only asks for permission to read your friend list.
+                                you, and who never did.
                             </p>
                             <a
                                 href="/api/auth/login"

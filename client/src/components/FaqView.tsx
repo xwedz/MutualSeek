@@ -52,6 +52,24 @@ export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
             ),
         },
         {
+            q: "Why isn't my country, or a certain player, listed?",
+            a: (
+                <>
+                    <p>
+                        The scanner goes country by country, starting with the countries that have the most active players, so smaller
+                        countries come later in each round.
+                    </p>
+                    <p>A player also won't appear if they:</p>
+                    <ul className="list-disc space-y-1 pl-5">
+                        <li>are outside their country's top 10,000, or haven't been online for 30 days</li>
+                        <li>don't have a profile page (only players who have had osu!supporter can create one)</li>
+                        <li>wrote about mutuals in another language, or inside an image</li>
+                        <li>are already on your friend list (when you're logged in)</li>
+                    </ul>
+                </>
+            ),
+        },
+        {
             q: 'Does it collect anything private?',
             a: (
                 <p>
@@ -88,24 +106,6 @@ export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
             ),
         },
         {
-            q: "Why isn't my country, or a certain player, listed?",
-            a: (
-                <>
-                    <p>
-                        The scanner goes country by country, starting with the countries that have the most active players, so smaller
-                        countries come later in each round.
-                    </p>
-                    <p>A player also won't appear if they:</p>
-                    <ul className="list-disc space-y-1 pl-5">
-                        <li>are outside their country's top 10,000, or haven't been online for 30 days</li>
-                        <li>don't have a profile page (only players who have had osu!supporter can create one)</li>
-                        <li>wrote about mutuals in another language, or inside an image</li>
-                        <li>are already on your friend list (when you're logged in)</li>
-                    </ul>
-                </>
-            ),
-        },
-        {
             q: 'What does the site keep if I log in?',
             a: (
                 <p>
@@ -133,10 +133,6 @@ export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
                     you yet.
                 </p>
             ),
-        },
-        {
-            q: 'Is MutualSeek affiliated with osu!?',
-            a: <p>No. It's an independent fan project, not affiliated with osu! or ppy Pty Ltd. It uses the public osu! API.</p>,
         },
     ];
 
