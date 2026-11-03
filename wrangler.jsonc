@@ -51,7 +51,7 @@
         "SCAN_COUNTRIES": "all",
         "SCAN_MODE": "osu",
         // Pause scanning: "now" = right away; a country code = once that country (including its last page) is done this pass; empty = don't pause
-        "SCAN_PAUSE": ""
+        "SCAN_PAUSE": "now"
     }
 
     // Don't put secrets here:
