@@ -23,6 +23,10 @@ export interface Env {
     // a country code (e.g. "US") = pause once that country is done this pass and its queue is empty;
     // empty = don't pause. Clear it and redeploy to continue from where it stopped.
     SCAN_PAUSE?: string;
+    // Optional relay for the background scanner's osu! requests (see relay/README.md). Both must be set to use it;
+    // when the relay doesn't answer, the scanner calls osu! directly. The secret is a Worker secret, not a var.
+    OSU_RELAY_URL?: string;
+    OSU_RELAY_SECRET?: string;
 }
 
 /** Type parameter for Hono, so c.env has the types above. */

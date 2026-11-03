@@ -15,6 +15,8 @@ Many players write things like "add me for mutuals" or "I follow back" on their 
 
 **Scanning.** A Cron Trigger runs the scanner once a minute. Each run handles a small batch: it reads a page of a country's performance ranking (top 10,000 per country, osu! standard), then fetches the profiles of the active players on it. A full pass goes through every country, starting with those that have the most active players, and passes are spread out over about a month.
 
+**Relay.** Requests from Workers to osu! all arrive from one shared address, and osu!'s web server can rate-limit them together. The scanner can send its requests through a small relay on a machine with its own address instead, and falls back to calling osu! directly when the relay is off (see [relay/README.md](relay/README.md)).
+
 **Detection.** `src/detect.ts` converts the profile's BBCode to plain text and looks for keywords in English, Chinese, Japanese and Korean (e.g. "mutual", "follow back", "互關", "相互フォロー", "맞팔"). It doesn't try to judge meaning: someone who writes "no mutuals" is listed too, and the excerpt shows exactly what they wrote so the user can decide.
 
 **What's stored.** Only players who mention mutuals are kept in the database, along with their public profile data (name, avatar, country, rank, pp, followers, last visit, the excerpt). Players who have never had osu!supporter can't create a profile page, so they're remembered by id and skipped in later passes.
@@ -42,6 +44,7 @@ src/                 Worker (API, OAuth, scanner)
   friends.ts         friend list sync and follow-back events
   auth.ts            osu! OAuth login
   osu.ts             osu! API client and token handling
+relay/               optional relay for the scanner's osu! requests (Node.js)
 client/              React frontend (served as static assets)
 migrations/          D1 schema migrations
 wrangler.jsonc       Worker configuration

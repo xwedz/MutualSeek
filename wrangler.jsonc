@@ -51,7 +51,10 @@
         "SCAN_COUNTRIES": "all",
         "SCAN_MODE": "osu",
         // Pause scanning: "now" = right away; a country code = once that country (including its last page) is done this pass; empty = don't pause
-        "SCAN_PAUSE": ""
+        "SCAN_PAUSE": "",
+        // Send the scanner's osu! requests through this relay (relay/README.md); also needs the OSU_RELAY_SECRET secret.
+        // Empty = call osu! directly. If the relay doesn't answer, the scanner calls osu! directly anyway.
+        "OSU_RELAY_URL": "https://mutualseek-relay.xwedz.dev"
     }
 
     // Don't put secrets here:

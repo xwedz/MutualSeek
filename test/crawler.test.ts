@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { runCrawler } from '../src/crawler';
 import type { Env } from '../src/env';
-import { apiRequests, installFakeOsu, type FakeOsu, type FakePlayer } from './fake-osu';
+import { apiRequests, installFakeOsu, RELAY_URL, type FakeOsu, type FakePlayer } from './fake-osu';
 import { DAY, resetDatabase } from './helpers';
 
 const NOW = Date.UTC(2026, 9, 25, 12);
@@ -305,6 +305,56 @@ describe('429 from osu! (too many requests)', () => {
         vi.setSystemTime(NOW + 2 * MINUTE);
         await runCrawler(scanEnv());
         expect(String(errorLog.mock.calls[1])).toContain('failed (429; no rate limit headers)');
+    });
+});
+
+describe('relay (OSU_RELAY_URL)', () => {
+    const SECRET = 's'.repeat(32);
+    const withRelay = { OSU_RELAY_URL: `${RELAY_URL}/`, OSU_RELAY_SECRET: SECRET };
+
+    it('sends every osu! request through the relay, with the secret', async () => {
+        const osu = installFakeOsu(many(20));
+        await runPass(osu, withRelay);
+
+        expect(osu.requests.length).toBeGreaterThan(20);
+        expect(osu.relayed).toEqual(osu.requests); // the token request included, nothing went direct
+        expect(new Set(osu.relaySecrets)).toEqual(new Set([SECRET]));
+        expect(await storedIds()).toHaveLength(20);
+    });
+
+    it.each([
+        ['answers with an error page (the machine is off)', false],
+        ["can't be reached at all", true],
+    ])('calls osu! directly when the relay %s, and goes back to it once it answers again', async (_, unreachable) => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const osu = installFakeOsu(many(30));
+        osu.relayUp = false;
+        osu.relayUnreachable = unreachable;
+        const directRun = await runOnce(osu, withRelay);
+        expect(directRun.length).toBeGreaterThan(1); // the run went on as usual
+        expect(osu.relayed).toEqual([]);
+        expect(osu.relayAttempts).toBe(osu.requests.length); // each request tried the relay first
+        expect(String(warn.mock.calls[0])).toContain('relay unavailable');
+
+        osu.relayUp = true;
+        const relayedRun = await runOnce(osu, withRelay);
+        expect(osu.relayed).toEqual(relayedRun);
+    });
+
+    it("isn't used unless both the address and the secret are set", async () => {
+        const osu = installFakeOsu(many(5));
+        await runPass(osu, { OSU_RELAY_URL: RELAY_URL, OSU_RELAY_SECRET: '' });
+        await runPass(osu, { OSU_RELAY_URL: '', OSU_RELAY_SECRET: SECRET });
+        expect(osu.relayAttempts).toBe(0);
+    });
+
+    it('backs off after a 429 that came through the relay', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const osu = installFakeOsu(many(30));
+        osu.rateLimited = true;
+        await runOnce(osu, withRelay);
+        expect(await runOnce(osu, withRelay)).toEqual([]); // waiting
+        expect(osu.relayAttempts).toBe(1);
     });
 });
 

@@ -2,6 +2,7 @@
 // every request is recorded so tests can check what the scanner asked for. The scanner runs in the same isolate as
 // the tests, so replacing the global fetch reaches its requests too.
 import { vi } from 'vitest';
+import { RELAY_MARKER } from '../src/osu';
 
 export interface FakePlayer {
     id: number;
@@ -35,14 +36,40 @@ export interface FakeOsu {
     rateLimited: boolean;
     /** Send this Retry-After (seconds) with the 429 */
     retryAfter: number | null;
+    /** Whether the relay at RELAY_URL answers; when it doesn't, Cloudflare's error page comes back instead */
+    relayUp: boolean;
+    /** When the relay is down, fail the request outright (a network error) instead of returning an error page */
+    relayUnreachable: boolean;
+    /** Requests that reached the relay, whether or not it was up */
+    relayAttempts: number;
+    /** Requests the relay forwarded to osu! (they're in `requests` too) */
+    relayed: string[];
+    /** The X-Relay-Secret header of each forwarded request */
+    relaySecrets: (string | null)[];
 }
+
+/** Where tests point OSU_RELAY_URL */
+export const RELAY_URL = 'https://relay.test';
 
 const PAGE_SIZE = 50;
 const REQUEST_GAP_MS = 1000; // src/crawler.ts
 const RATE_LIMIT = 1200;
 
 export function installFakeOsu(players: FakePlayer[] = []): FakeOsu {
-    const osu: FakeOsu = { players, requests: [], gaps: [], failOnce: new Map(), rejectToken: false, rateLimited: false, retryAfter: null };
+    const osu: FakeOsu = {
+        players,
+        requests: [],
+        gaps: [],
+        failOnce: new Map(),
+        rejectToken: false,
+        rateLimited: false,
+        retryAfter: null,
+        relayUp: true,
+        relayUnreachable: false,
+        relayAttempts: 0,
+        relayed: [],
+        relaySecrets: [],
+    };
     let tokenCount = 0;
     // Like the real API, every JSON answer says how many requests are left
     const json = (body: unknown, status = 200) =>
@@ -65,7 +92,26 @@ export function installFakeOsu(players: FakePlayer[] = []): FakeOsu {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
         const request = new Request(input, init);
         const url = new URL(request.url);
+        if (url.origin === RELAY_URL) {
+            osu.relayAttempts++;
+            if (!osu.relayUp) {
+                if (osu.relayUnreachable) throw new TypeError('Network connection lost.');
+                // Like Cloudflare answering for a tunnel whose machine is off: an error page without the relay's marker
+                return new Response('error code: 1033', { status: 530 });
+            }
+            osu.relaySecrets.push(request.headers.get('X-Relay-Secret'));
+            osu.relayed.push(`${request.method} ${url.pathname}${url.search}`);
+            const res = await answer(request, url);
+            const marked = new Response(res.body, res);
+            marked.headers.set(RELAY_MARKER, '1');
+            return marked;
+        }
         if (url.hostname !== 'osu.ppy.sh') throw new Error(`unexpected request to ${url.href}`);
+        return answer(request, url);
+    });
+
+    // osu! itself: the same answers whether a request came directly or through the relay
+    async function answer(request: Request, url: URL): Promise<Response> {
         osu.requests.push(`${request.method} ${url.pathname}${url.search}`);
 
         if (osu.rateLimited) {
@@ -120,7 +166,7 @@ export function installFakeOsu(players: FakePlayer[] = []): FakeOsu {
         }
 
         throw new Error(`the fake osu! API doesn't handle ${url.pathname}`);
-    });
+    }
 
     return osu;
 }

@@ -113,8 +113,44 @@ export class OsuApiError extends Error {
 /** onRateLimit: called with the rate limit headers of each successful response (an error carries its own in OsuApiError) */
 type RateLimitListener = (info: RateLimitInfo) => void;
 
-async function osuFetch<T>(path: string, init: RequestInit, onRateLimit?: RateLimitListener): Promise<T> {
-    const res = await fetch(`${OSU}${path}`, init);
+/**
+ * A relay (relay/relay.mjs) on a machine with its own IP address. Requests a Worker sends to another Cloudflare site
+ * all reach it from the same address, so osu!'s web server rate-limits every Worker calling osu! together; through the
+ * relay, osu! sees the relay's address instead. Only the background scanner uses it.
+ */
+export interface Relay {
+    url: string;
+    secret: string;
+}
+
+/** The relay adds this header to everything it answers, so an answer from anything else (e.g. Cloudflare saying the
+ *  tunnel is down because the relay's machine is off) is never mistaken for osu!'s */
+export const RELAY_MARKER = 'x-mutualseek-relay';
+
+/** The scanner's relay from the Worker settings; undefined when not configured (then it calls osu! directly) */
+export function relayFromEnv(env: Env): Relay | undefined {
+    const url = env.OSU_RELAY_URL?.trim().replace(/\/+$/, '');
+    return url && env.OSU_RELAY_SECRET ? { url, secret: env.OSU_RELAY_SECRET } : undefined;
+}
+
+/** Through the relay when there is one and it answers; otherwise straight to osu! */
+async function send(path: string, init: RequestInit, relay?: Relay): Promise<Response> {
+    if (relay) {
+        try {
+            const headers = new Headers(init.headers);
+            headers.set('X-Relay-Secret', relay.secret);
+            const res = await fetch(`${relay.url}${path}`, { ...init, headers });
+            if (res.headers.get(RELAY_MARKER) === '1') return res;
+        } catch {
+            // The relay couldn't be reached
+        }
+        console.warn(`[osu] relay unavailable, calling osu! directly: ${path}`);
+    }
+    return fetch(`${OSU}${path}`, init);
+}
+
+async function osuFetch<T>(path: string, init: RequestInit, onRateLimit?: RateLimitListener, relay?: Relay): Promise<T> {
+    const res = await send(path, init, relay);
     const rateLimit = readRateLimit(res.headers);
     if (!res.ok) throw new OsuApiError(res.status, path, await res.text().catch(() => ''), rateLimit);
     onRateLimit?.(rateLimit);
@@ -124,21 +160,26 @@ async function osuFetch<T>(path: string, init: RequestInit, onRateLimit?: RateLi
 export function apiGet<T>(
     path: string,
     token: string,
-    { apiVersion, onRateLimit }: { apiVersion?: string; onRateLimit?: RateLimitListener } = {},
+    { apiVersion, onRateLimit, relay }: { apiVersion?: string; onRateLimit?: RateLimitListener; relay?: Relay } = {},
 ): Promise<T> {
     const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
     if (apiVersion) headers['x-api-version'] = apiVersion;
-    return osuFetch<T>(`/api/v2${path}`, { headers }, onRateLimit);
+    return osuFetch<T>(`/api/v2${path}`, { headers }, onRateLimit, relay);
 }
 
 export const getFriends = (token: string) => apiGet<UserRelation[]>('/friends', token, { apiVersion: FRIENDS_API_VERSION });
 
-export function requestToken(env: Env, params: Record<string, string>): Promise<TokenResponse> {
-    return osuFetch<TokenResponse>('/oauth/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ client_id: env.OSU_CLIENT_ID, client_secret: env.OSU_CLIENT_SECRET, ...params }),
-    });
+export function requestToken(env: Env, params: Record<string, string>, relay?: Relay): Promise<TokenResponse> {
+    return osuFetch<TokenResponse>(
+        '/oauth/token',
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ client_id: env.OSU_CLIENT_ID, client_secret: env.OSU_CLIENT_SECRET, ...params }),
+        },
+        undefined,
+        relay,
+    );
 }
 
 /** Converts osu!'s last_visit (an ISO string) to Unix milliseconds; null if missing or unparseable. */
@@ -160,7 +201,7 @@ const EXPIRY_MARGIN_MS = 5 * 60 * 1000; // renew 5 minutes early so a token neve
  * forceNew: ignore the cache and request a new one. Used when the API returns 401: the token may have stopped working
  * before it expired (e.g. the OAuth app was replaced or the client secret regenerated), so the cached expiry is wrong.
  */
-export async function getAppToken(env: Env, forceNew = false): Promise<string> {
+export async function getAppToken(env: Env, forceNew = false, relay?: Relay): Promise<string> {
     const row = forceNew ? null : await env.DB.prepare('SELECT value FROM kv WHERE key = ?').bind(APP_TOKEN_KEY).first<{ value: string }>();
     if (row) {
         const cached = JSON.parse(row.value) as { token: string; expiresAt: number };
@@ -169,7 +210,7 @@ export async function getAppToken(env: Env, forceNew = false): Promise<string> {
         }
     }
 
-    const res = await requestToken(env, { grant_type: 'client_credentials', scope: 'public' });
+    const res = await requestToken(env, { grant_type: 'client_credentials', scope: 'public' }, relay);
     const value = JSON.stringify({
         token: await encryptToken(env.TOKEN_ENCRYPTION_KEY, res.access_token),
         expiresAt: Date.now() + res.expires_in * 1000,

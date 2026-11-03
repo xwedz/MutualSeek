@@ -37,6 +37,7 @@ import {
     getAppToken,
     OsuApiError,
     parseTime,
+    relayFromEnv,
     type CountryRankingResponse,
     type OsuUser,
     type RankingResponse,
@@ -198,6 +199,8 @@ export async function runCrawler(env: Env): Promise<string> {
     // like any other API error below
     let token: string | null = null;
     let tokenRenewed = false;
+    // osu! requests go through the relay when one is set up (see relay/README.md), straight to osu! otherwise
+    const relay = relayFromEnv(env);
     // From the latest successful osu! response, logged with the summary. Not overwritten by an error, so a run that
     // ends in a 429 still shows how much of the API's own limit was left just before it
     let rateLimit: RateLimitInfo | null = null;
@@ -209,15 +212,15 @@ export async function runCrawler(env: Env): Promise<string> {
     // OAuth app was replaced), so get a new one and retry once. Only once: if the new token also gets a 401
     // (e.g. a wrong secret), the error is thrown instead of retrying forever.
     const get: ApiGet = async <T>(path: string) => {
-        token ??= await getAppToken(env);
+        token ??= await getAppToken(env, false, relay);
         try {
-            return await apiGet<T>(path, token, { onRateLimit });
+            return await apiGet<T>(path, token, { onRateLimit, relay });
         } catch (err) {
             if (tokenRenewed || !(err instanceof OsuApiError && err.status === 401)) throw err;
             tokenRenewed = true;
             console.warn('[crawler] app token rejected (401), requesting a new one and retrying');
-            token = await getAppToken(env, true);
-            return apiGet<T>(path, token, { onRateLimit });
+            token = await getAppToken(env, true, relay);
+            return apiGet<T>(path, token, { onRateLimit, relay });
         }
     };
 

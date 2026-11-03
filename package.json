@@ -11,7 +11,9 @@
     "build": "npm --prefix client run build",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc --noEmit && tsc --noEmit -p test && npm --prefix client run typecheck",
-    "test": "vitest run",
+    "test": "vitest run && npm run test:relay",
+    "test:relay": "node --test relay/relay.test.mjs",
+    "relay": "node --env-file=relay/.env relay/relay.mjs",
     "cf-typegen": "wrangler types --include-env=false",
     "db:migrate": "wrangler d1 migrations apply osu-mutual-tool --local",
     "db:migrate:remote": "wrangler d1 migrations apply osu-mutual-tool --remote"
