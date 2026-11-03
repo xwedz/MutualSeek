@@ -22,8 +22,9 @@
 //
 // Per-run limits:
 //   - at most 9 requests per run, one second apart (the osu! API limit is 60 per minute)
-//   - after a 429 (too many requests), no requests at all for 15 minutes, doubling each time it happens again
-//     (up to a day, or longer if osu! asks for it with Retry-After); a run without a 429 resets it
+//   - after a 429 (too many requests), no requests at all for 2 minutes, doubling each time it happens again
+//     (up to an hour, or longer if osu! asks for it with Retry-After); a run without a 429 resets it.
+//     Short at first so a one-off 429 costs little; capped at an hour so scanning picks up soon after a long block ends.
 //   - Workers Free: at most 50 subrequests per run (D1 queries included) and 10 ms of CPU time
 //   - D1 Free: at most 50 queries per run, so each batch is sent as one JSON parameter and expanded with json_each
 
@@ -49,8 +50,8 @@ const RUN_DEADLINE_MS = 50 * 1000;
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 // Exponential backoff after a 429, as the osu! API guidelines suggest
-const BACKOFF_START_MS = 15 * MINUTE_MS;
-const BACKOFF_MAX_MS = DAY_MS;
+const BACKOFF_START_MS = 2 * MINUTE_MS;
+const BACKOFF_MAX_MS = 60 * MINUTE_MS;
 const MIN_PASS_INTERVAL_MS = 30 * DAY_MS;
 // Stats (including per-country counts for the country menu) are recomputed hourly. They only read players who
 // mention mutuals (a few tens of thousands worldwide), about 800,000 rows read a day, 16% of the free allowance

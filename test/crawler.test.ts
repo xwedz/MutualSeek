@@ -224,13 +224,13 @@ describe('429 from osu! (too many requests)', () => {
         errorLog = vi.spyOn(console, 'error').mockImplementation(() => {}); // each 429 is logged as "scan stopped"
     });
 
-    it('sends nothing for 15 minutes, then waits twice as long each time, up to a day', async () => {
+    it('sends nothing for 2 minutes, then waits twice as long each time, up to an hour', async () => {
         const osu = installFakeOsu(many(30));
         osu.rateLimited = true;
         expect(await countRequests(osu)).toBe(1); // stops at the first 429
 
         let at = NOW;
-        for (const wait of [15, 30, 60, 120, 240, 480, 960, 1440, 1440]) {
+        for (const wait of [2, 4, 8, 16, 32, 60, 60]) {
             vi.setSystemTime(at + (wait - 1) * MINUTE);
             expect(await countRequests(osu)).toBe(0);
             at += wait * MINUTE;
@@ -239,22 +239,22 @@ describe('429 from osu! (too many requests)', () => {
         }
     });
 
-    it('goes back to 15 minutes after a run without a 429', async () => {
+    it('goes back to 2 minutes after a run without a 429', async () => {
         const osu = installFakeOsu(many(30));
         osu.rateLimited = true;
-        await countRequests(osu); // 429: wait 15 minutes
-        vi.setSystemTime(NOW + 15 * MINUTE);
-        await countRequests(osu); // 429 again: wait 30 minutes
+        await countRequests(osu); // 429: wait 2 minutes
+        vi.setSystemTime(NOW + 2 * MINUTE);
+        await countRequests(osu); // 429 again: wait 4 minutes
 
-        vi.setSystemTime(NOW + 45 * MINUTE);
+        vi.setSystemTime(NOW + 6 * MINUTE);
         osu.rateLimited = false;
         expect(await countRequests(osu)).toBeGreaterThan(1); // scanning normally
 
         osu.rateLimited = true;
-        await countRequests(osu); // 429: 15 minutes again, not 60
-        vi.setSystemTime(NOW + 59 * MINUTE);
+        await countRequests(osu); // 429: 2 minutes again, not 8
+        vi.setSystemTime(NOW + 7 * MINUTE);
         expect(await countRequests(osu)).toBe(0);
-        vi.setSystemTime(NOW + 60 * MINUTE);
+        vi.setSystemTime(NOW + 8 * MINUTE);
         expect(await countRequests(osu)).toBe(1);
     });
 
@@ -274,7 +274,7 @@ describe('429 from osu! (too many requests)', () => {
         osu.rateLimited = true;
         await countRequests(osu);
         osu.rateLimited = false;
-        vi.setSystemTime(NOW + 15 * MINUTE);
+        vi.setSystemTime(NOW + 2 * MINUTE);
         await runPass(osu);
         expect(await storedIds()).toEqual([1, 2, 3]);
     });
@@ -288,7 +288,7 @@ describe('429 from osu! (too many requests)', () => {
         osu.failOnce.set(12, 429);
         const summary = await runCrawler(scanEnv());
         const remaining = 1200 - osu.requests.length + 1;
-        expect(summary).toMatch(new RegExp(`osu! rate limit \\(last OK response\\): remaining ${remaining}/1200, waiting 15 min after a 429$`));
+        expect(summary).toMatch(new RegExp(`osu! rate limit \\(last OK response\\): remaining ${remaining}/1200, waiting 2 min after a 429$`));
     });
 
     it('says so when a 429 comes without rate limit headers', async () => {
@@ -298,11 +298,11 @@ describe('429 from osu! (too many requests)', () => {
         osu.rateLimited = true;
         osu.retryAfter = 60;
         // Nothing succeeded in this run, so the summary has no rate limit part; the error has the 429's own headers
-        expect(await runCrawler(scanEnv())).toMatch(/queued: \d+, waiting 15 min after a 429$/);
+        expect(await runCrawler(scanEnv())).toMatch(/queued: \d+, waiting 2 min after a 429$/);
         expect(String(errorLog.mock.calls[0])).toContain('failed (429; retry-after 60s): <html> <head>');
 
         osu.retryAfter = null;
-        vi.setSystemTime(NOW + 15 * 60 * 1000);
+        vi.setSystemTime(NOW + 2 * MINUTE);
         await runCrawler(scanEnv());
         expect(String(errorLog.mock.calls[1])).toContain('failed (429; no rate limit headers)');
     });
