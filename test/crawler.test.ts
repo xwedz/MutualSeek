@@ -1,6 +1,6 @@
 // The background scanner (src/crawler.ts) against a fake osu! API (test/fake-osu.ts).
 import { env } from 'cloudflare:workers';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { runCrawler } from '../src/crawler';
 import type { Env } from '../src/env';
 import { apiRequests, installFakeOsu, type FakeOsu, type FakePlayer } from './fake-osu';
@@ -206,6 +206,87 @@ describe('osu! API errors', () => {
         await runPass(osu);
         expect(osu.requests.filter(r => r.includes('/oauth/token'))).toHaveLength(2);
         expect(await storedIds()).toEqual([1]);
+    });
+});
+
+describe('429 from osu! (too many requests)', () => {
+    const MINUTE = 60 * 1000;
+
+    /** One run; how many requests it sent to osu!, token requests included */
+    async function countRequests(osu: FakeOsu) {
+        const before = osu.requests.length;
+        await runCrawler(scanEnv());
+        return osu.requests.length - before;
+    }
+
+    let errorLog: MockInstance<typeof console.error>;
+    beforeEach(() => {
+        errorLog = vi.spyOn(console, 'error').mockImplementation(() => {}); // each 429 is logged as "scan stopped"
+    });
+
+    it('sends nothing for 15 minutes, then waits twice as long each time, up to a day', async () => {
+        const osu = installFakeOsu(many(30));
+        osu.rateLimited = true;
+        expect(await countRequests(osu)).toBe(1); // stops at the first 429
+
+        let at = NOW;
+        for (const wait of [15, 30, 60, 120, 240, 480, 960, 1440, 1440]) {
+            vi.setSystemTime(at + (wait - 1) * MINUTE);
+            expect(await countRequests(osu)).toBe(0);
+            at += wait * MINUTE;
+            vi.setSystemTime(at);
+            expect(await countRequests(osu)).toBe(1); // tries once, gets 429 again
+        }
+    });
+
+    it('goes back to 15 minutes after a run without a 429', async () => {
+        const osu = installFakeOsu(many(30));
+        osu.rateLimited = true;
+        await countRequests(osu); // 429: wait 15 minutes
+        vi.setSystemTime(NOW + 15 * MINUTE);
+        await countRequests(osu); // 429 again: wait 30 minutes
+
+        vi.setSystemTime(NOW + 45 * MINUTE);
+        osu.rateLimited = false;
+        expect(await countRequests(osu)).toBeGreaterThan(1); // scanning normally
+
+        osu.rateLimited = true;
+        await countRequests(osu); // 429: 15 minutes again, not 60
+        vi.setSystemTime(NOW + 59 * MINUTE);
+        expect(await countRequests(osu)).toBe(0);
+        vi.setSystemTime(NOW + 60 * MINUTE);
+        expect(await countRequests(osu)).toBe(1);
+    });
+
+    it('waits longer when osu! asks for it with Retry-After', async () => {
+        const osu = installFakeOsu(many(30));
+        osu.rateLimited = true;
+        osu.retryAfter = 60 * 60;
+        await countRequests(osu);
+        vi.setSystemTime(NOW + 59 * MINUTE);
+        expect(await countRequests(osu)).toBe(0);
+        vi.setSystemTime(NOW + 60 * MINUTE);
+        expect(await countRequests(osu)).toBe(1);
+    });
+
+    it('picks up where it stopped once osu! answers again', async () => {
+        const osu = installFakeOsu(many(3));
+        osu.rateLimited = true;
+        await countRequests(osu);
+        osu.rateLimited = false;
+        vi.setSystemTime(NOW + 15 * MINUTE);
+        await runPass(osu);
+        expect(await storedIds()).toEqual([1, 2, 3]);
+    });
+
+    it("logs osu!'s rate limit headers", async () => {
+        const osu = installFakeOsu(many(30));
+        expect(await runCrawler(scanEnv())).toMatch(/osu! rate limit: remaining \d+\/1200$/);
+
+        osu.rateLimited = true;
+        osu.retryAfter = 60;
+        expect(await runCrawler(scanEnv())).toMatch(/osu! rate limit: retry-after 60s, waiting 15 min after a 429$/);
+        expect(String(errorLog.mock.calls[0])).toContain('failed (429; retry-after 60s): <html> <head>');
     });
 });
 

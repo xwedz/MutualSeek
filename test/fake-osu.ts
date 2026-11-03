@@ -31,16 +31,25 @@ export interface FakeOsu {
     failOnce: Map<number, number>;
     /** Answer API requests with 401 until a new token is requested */
     rejectToken: boolean;
+    /** Answer every request with 429, as an HTML page without rate limit headers (like the one seen in production) */
+    rateLimited: boolean;
+    /** Send this Retry-After (seconds) with the 429 */
+    retryAfter: number | null;
 }
 
 const PAGE_SIZE = 50;
 const REQUEST_GAP_MS = 1000; // src/crawler.ts
-
-const json = (body: unknown, status = 200) => Response.json(body, { status });
+const RATE_LIMIT = 1200;
 
 export function installFakeOsu(players: FakePlayer[] = []): FakeOsu {
-    const osu: FakeOsu = { players, requests: [], gaps: [], failOnce: new Map(), rejectToken: false };
+    const osu: FakeOsu = { players, requests: [], gaps: [], failOnce: new Map(), rejectToken: false, rateLimited: false, retryAfter: null };
     let tokenCount = 0;
+    // Like the real API, every JSON answer says how many requests are left
+    const json = (body: unknown, status = 200) =>
+        Response.json(body, {
+            status,
+            headers: { 'X-RateLimit-Limit': String(RATE_LIMIT), 'X-RateLimit-Remaining': String(RATE_LIMIT - osu.requests.length) },
+        });
 
     // The 1 second gaps would make every scanner run take 8 seconds; they're recorded and skipped instead.
     // Other timers (e.g. Vitest's own test timeout) keep their real delay.
@@ -58,6 +67,12 @@ export function installFakeOsu(players: FakePlayer[] = []): FakeOsu {
         const url = new URL(request.url);
         if (url.hostname !== 'osu.ppy.sh') throw new Error(`unexpected request to ${url.href}`);
         osu.requests.push(`${request.method} ${url.pathname}${url.search}`);
+
+        if (osu.rateLimited) {
+            const headers: Record<string, string> = { 'Content-Type': 'text/html' };
+            if (osu.retryAfter !== null) headers['Retry-After'] = String(osu.retryAfter);
+            return new Response('<html>\n<head><title>429 Too Many Requests</title></head>\n</html>', { status: 429, headers });
+        }
 
         if (url.pathname === '/oauth/token') {
             osu.rejectToken = false;

@@ -22,6 +22,8 @@
 //
 // Per-run limits:
 //   - at most 9 requests per run, one second apart (the osu! API limit is 60 per minute)
+//   - after a 429 (too many requests), no requests at all for 15 minutes, doubling each time it happens again
+//     (up to a day, or longer if osu! asks for it with Retry-After); a run without a 429 resets it
 //   - Workers Free: at most 50 subrequests per run (D1 queries included) and 10 ms of CPU time
 //   - D1 Free: at most 50 queries per run, so each batch is sent as one JSON parameter and expanded with json_each
 
@@ -30,19 +32,25 @@ import type { Env } from './env';
 import { NEW_SHUFFLE_KEY_SQL } from './shuffle';
 import {
     apiGet,
+    formatRateLimit,
     getAppToken,
     OsuApiError,
     parseTime,
     type CountryRankingResponse,
     type OsuUser,
     type RankingResponse,
+    type RateLimitInfo,
 } from './osu';
 
 const MAX_REQUESTS_PER_RUN = 9;
 const REQUEST_GAP_MS = 1000;
 // Stop sending new requests after this long: a run starts every minute, so a slow one would overlap the next
 const RUN_DEADLINE_MS = 50 * 1000;
+const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Exponential backoff after a 429, as the osu! API guidelines suggest
+const BACKOFF_START_MS = 15 * MINUTE_MS;
+const BACKOFF_MAX_MS = DAY_MS;
 const MIN_PASS_INTERVAL_MS = 30 * DAY_MS;
 // Stats (including per-country counts for the country menu) are recomputed hourly. They only read players who
 // mention mutuals (a few tens of thousands worldwide), about 800,000 rows read a day, 16% of the free allowance
@@ -62,6 +70,8 @@ interface CrawlerState {
     passSkipped: number; // players skipped this pass because they never had supporter (requests saved)
     lastPassScanned: number | null; // profiles scanned in the previous pass (recorded when a pass ends)
     statsUpdatedAt: number;
+    backoffMs: number; // the current wait after a 429; 0 = no recent 429
+    backoffUntil: number; // no requests before this time
 }
 
 export interface CrawlerStats {
@@ -96,6 +106,8 @@ const initialState = (): CrawlerState => ({
     passSkipped: 0,
     lastPassScanned: null,
     statsUpdatedAt: 0,
+    backoffMs: 0,
+    backoffUntil: 0,
 });
 
 /**
@@ -177,21 +189,32 @@ export async function runCrawler(env: Env): Promise<string> {
     const saved = await readKv<Partial<CrawlerState>>(db, STATE_KEY);
     const state: CrawlerState = saved && Array.isArray(saved.countries) ? { ...initialState(), ...saved } : initialState();
     if (isPaused(env, state)) return `paused (SCAN_PAUSE = ${env.SCAN_PAUSE})`;
-    let token = await getAppToken(env);
+    if (startedAt < state.backoffUntil) {
+        return `waiting until ${new Date(state.backoffUntil).toISOString()} after a 429 from osu! (backoff ${state.backoffMs / MINUTE_MS} min)`;
+    }
+
+    // The token is only read (or requested) once a request is needed, so a token request that fails is handled
+    // like any other API error below
+    let token: string | null = null;
     let tokenRenewed = false;
+    let rateLimit: RateLimitInfo | null = null; // from the latest osu! response, logged with the summary
+    const onRateLimit = (info: RateLimitInfo) => {
+        rateLimit = info;
+    };
 
     // Every API call goes through here. A 401 means the cached token stopped working before it expired (e.g. the
     // OAuth app was replaced), so get a new one and retry once. Only once: if the new token also gets a 401
     // (e.g. a wrong secret), the error is thrown instead of retrying forever.
     const get: ApiGet = async <T>(path: string) => {
+        token ??= await getAppToken(env);
         try {
-            return await apiGet<T>(path, token);
+            return await apiGet<T>(path, token, { onRateLimit });
         } catch (err) {
             if (tokenRenewed || !(err instanceof OsuApiError && err.status === 401)) throw err;
             tokenRenewed = true;
             console.warn('[crawler] app token rejected (401), requesting a new one and retrying');
             token = await getAppToken(env, true);
-            return apiGet<T>(path, token);
+            return apiGet<T>(path, token, { onRateLimit });
         }
     };
 
@@ -299,6 +322,16 @@ export async function runCrawler(env: Env): Promise<string> {
         stopped = err;
     }
 
+    // ---------- 429: wait before the next request, twice as long as last time; any other outcome resets the wait ----------
+    const tooManyRequests = stopped instanceof OsuApiError && stopped.status === 429 ? stopped : null;
+    if (tooManyRequests) {
+        state.backoffMs = Math.min(state.backoffMs > 0 ? state.backoffMs * 2 : BACKOFF_START_MS, BACKOFF_MAX_MS);
+        // If osu! asks for a longer wait, that wins
+        state.backoffUntil = Date.now() + Math.max(state.backoffMs, (tooManyRequests.rateLimit.retryAfterSeconds ?? 0) * 1000);
+    } else if (requests > 0) {
+        state.backoffMs = 0;
+    }
+
     // ---------- Write to the database: everything in one batch (a transaction), so nothing is half-written ----------
     const now = Date.now();
     const statements: D1PreparedStatement[] = [];
@@ -389,7 +422,9 @@ export async function runCrawler(env: Env): Promise<string> {
     }
 
     const where = state.countries.length > 0 ? `${state.countries[state.countryIndex]} page ${state.nextPage}` : 'pass finished, waiting for the next one';
-    const summary = `read ${pagesRead} ranking pages, scanned ${scanned} (${upserts.length} mention mutuals), skipped ${skipped} non-supporters, removed ${removals.length}, at: ${where}, queued: ${state.pending.length}`;
+    let summary = `read ${pagesRead} ranking pages, scanned ${scanned} (${upserts.length} mention mutuals), skipped ${skipped} non-supporters, removed ${removals.length}, at: ${where}, queued: ${state.pending.length}`;
+    if (rateLimit) summary += `, osu! rate limit: ${formatRateLimit(rateLimit)}`;
+    if (tooManyRequests) summary += `, waiting ${Math.round((state.backoffUntil - Date.now()) / MINUTE_MS)} min after a 429`;
     if (stopped) console.error(`scan stopped (${summary}):`, stopped);
     return summary;
 }

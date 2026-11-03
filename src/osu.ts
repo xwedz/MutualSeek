@@ -72,25 +72,66 @@ interface TokenResponse {
     expires_in: number; // seconds
 }
 
+/**
+ * The rate limit headers on an osu! response; each is null when missing. The API itself sends X-RateLimit-*,
+ * but a 429 page from the web server in front of it may have none, which tells the two kinds of limit apart.
+ */
+export interface RateLimitInfo {
+    limit: number | null;
+    remaining: number | null;
+    retryAfterSeconds: number | null;
+}
+
+export function readRateLimit(headers: Headers): RateLimitInfo {
+    const number = (name: string) => {
+        const value = headers.get(name);
+        return value !== null && value.trim() !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
+    };
+    // Retry-After is either a number of seconds or an HTTP date
+    let retryAfterSeconds = number('retry-after');
+    const retryAfter = headers.get('retry-after');
+    if (retryAfterSeconds === null && retryAfter !== null && !Number.isNaN(Date.parse(retryAfter))) {
+        retryAfterSeconds = Math.max(0, Math.ceil((Date.parse(retryAfter) - Date.now()) / 1000));
+    }
+    return { limit: number('x-ratelimit-limit'), remaining: number('x-ratelimit-remaining'), retryAfterSeconds };
+}
+
+export function formatRateLimit({ limit, remaining, retryAfterSeconds }: RateLimitInfo): string {
+    const parts: string[] = [];
+    if (remaining !== null || limit !== null) parts.push(`remaining ${remaining ?? '?'}/${limit ?? '?'}`);
+    if (retryAfterSeconds !== null) parts.push(`retry-after ${retryAfterSeconds}s`);
+    return parts.length > 0 ? parts.join(', ') : 'no rate limit headers';
+}
+
 export class OsuApiError extends Error {
-    constructor(public status: number, path: string, body: string) {
-        super(`osu! API ${path} failed (${status}): ${body.slice(0, 200)}`);
+    constructor(public status: number, path: string, body: string, public rateLimit: RateLimitInfo) {
+        // Error pages are HTML; collapse the whitespace so the log stays on one line
+        super(`osu! API ${path} failed (${status}; ${formatRateLimit(rateLimit)}): ${body.replace(/\s+/g, ' ').slice(0, 200)}`);
     }
 }
 
-async function osuFetch<T>(path: string, init: RequestInit): Promise<T> {
+/** onRateLimit: called with every response's rate limit headers, including error responses */
+type RateLimitListener = (info: RateLimitInfo) => void;
+
+async function osuFetch<T>(path: string, init: RequestInit, onRateLimit?: RateLimitListener): Promise<T> {
     const res = await fetch(`${OSU}${path}`, init);
-    if (!res.ok) throw new OsuApiError(res.status, path, await res.text().catch(() => ''));
+    const rateLimit = readRateLimit(res.headers);
+    onRateLimit?.(rateLimit);
+    if (!res.ok) throw new OsuApiError(res.status, path, await res.text().catch(() => ''), rateLimit);
     return res.json<T>();
 }
 
-export function apiGet<T>(path: string, token: string, apiVersion?: string): Promise<T> {
+export function apiGet<T>(
+    path: string,
+    token: string,
+    { apiVersion, onRateLimit }: { apiVersion?: string; onRateLimit?: RateLimitListener } = {},
+): Promise<T> {
     const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
     if (apiVersion) headers['x-api-version'] = apiVersion;
-    return osuFetch<T>(`/api/v2${path}`, { headers });
+    return osuFetch<T>(`/api/v2${path}`, { headers }, onRateLimit);
 }
 
-export const getFriends = (token: string) => apiGet<UserRelation[]>('/friends', token, FRIENDS_API_VERSION);
+export const getFriends = (token: string) => apiGet<UserRelation[]>('/friends', token, { apiVersion: FRIENDS_API_VERSION });
 
 export function requestToken(env: Env, params: Record<string, string>): Promise<TokenResponse> {
     return osuFetch<TokenResponse>('/oauth/token', {
