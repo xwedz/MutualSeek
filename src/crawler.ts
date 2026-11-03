@@ -197,7 +197,9 @@ export async function runCrawler(env: Env): Promise<string> {
     // like any other API error below
     let token: string | null = null;
     let tokenRenewed = false;
-    let rateLimit: RateLimitInfo | null = null; // from the latest osu! response, logged with the summary
+    // From the latest successful osu! response, logged with the summary. Not overwritten by an error, so a run that
+    // ends in a 429 still shows how much of the API's own limit was left just before it
+    let rateLimit: RateLimitInfo | null = null;
     const onRateLimit = (info: RateLimitInfo) => {
         rateLimit = info;
     };
@@ -423,7 +425,7 @@ export async function runCrawler(env: Env): Promise<string> {
 
     const where = state.countries.length > 0 ? `${state.countries[state.countryIndex]} page ${state.nextPage}` : 'pass finished, waiting for the next one';
     let summary = `read ${pagesRead} ranking pages, scanned ${scanned} (${upserts.length} mention mutuals), skipped ${skipped} non-supporters, removed ${removals.length}, at: ${where}, queued: ${state.pending.length}`;
-    if (rateLimit) summary += `, osu! rate limit: ${formatRateLimit(rateLimit)}`;
+    if (rateLimit) summary += `, osu! rate limit (last OK response): ${formatRateLimit(rateLimit)}`;
     if (tooManyRequests) summary += `, waiting ${Math.round((state.backoffUntil - Date.now()) / MINUTE_MS)} min after a 429`;
     if (stopped) console.error(`scan stopped (${summary}):`, stopped);
     return summary;

@@ -110,14 +110,14 @@ export class OsuApiError extends Error {
     }
 }
 
-/** onRateLimit: called with every response's rate limit headers, including error responses */
+/** onRateLimit: called with the rate limit headers of each successful response (an error carries its own in OsuApiError) */
 type RateLimitListener = (info: RateLimitInfo) => void;
 
 async function osuFetch<T>(path: string, init: RequestInit, onRateLimit?: RateLimitListener): Promise<T> {
     const res = await fetch(`${OSU}${path}`, init);
     const rateLimit = readRateLimit(res.headers);
-    onRateLimit?.(rateLimit);
     if (!res.ok) throw new OsuApiError(res.status, path, await res.text().catch(() => ''), rateLimit);
+    onRateLimit?.(rateLimit);
     return res.json<T>();
 }
 

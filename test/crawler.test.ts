@@ -279,14 +279,32 @@ describe('429 from osu! (too many requests)', () => {
         expect(await storedIds()).toEqual([1, 2, 3]);
     });
 
-    it("logs osu!'s rate limit headers", async () => {
+    it("logs the rate limit headers of the last successful response, even when the run ends in a 429", async () => {
         const osu = installFakeOsu(many(30));
-        expect(await runCrawler(scanEnv())).toMatch(/osu! rate limit: remaining \d+\/1200$/);
+        expect(await runCrawler(scanEnv())).toMatch(/osu! rate limit \(last OK response\): remaining \d+\/1200$/);
+
+        // A few profiles answer, then a 429. The fake counts down with every request, so the 429 itself (one request
+        // later) would say one less: the summary must show the last successful one
+        osu.failOnce.set(12, 429);
+        const summary = await runCrawler(scanEnv());
+        const remaining = 1200 - osu.requests.length + 1;
+        expect(summary).toMatch(new RegExp(`osu! rate limit \\(last OK response\\): remaining ${remaining}/1200, waiting 15 min after a 429$`));
+    });
+
+    it('says so when a 429 comes without rate limit headers', async () => {
+        const osu = installFakeOsu(many(30));
+        await runCrawler(scanEnv());
 
         osu.rateLimited = true;
         osu.retryAfter = 60;
-        expect(await runCrawler(scanEnv())).toMatch(/osu! rate limit: retry-after 60s, waiting 15 min after a 429$/);
+        // Nothing succeeded in this run, so the summary has no rate limit part; the error has the 429's own headers
+        expect(await runCrawler(scanEnv())).toMatch(/queued: \d+, waiting 15 min after a 429$/);
         expect(String(errorLog.mock.calls[0])).toContain('failed (429; retry-after 60s): <html> <head>');
+
+        osu.retryAfter = null;
+        vi.setSystemTime(NOW + 15 * 60 * 1000);
+        await runCrawler(scanEnv());
+        expect(String(errorLog.mock.calls[1])).toContain('failed (429; no rate limit headers)');
     });
 });
 
