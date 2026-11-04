@@ -6,7 +6,7 @@
 import { Hono, type Context } from 'hono';
 import { deleteAccountData } from './account';
 import auth from './auth';
-import { getCrawlerProgress, runCrawler } from './crawler';
+import { getCountryInFirstScan, getCrawlerProgress, runCrawler } from './crawler';
 import type { Snippet } from './detect';
 import type { AppEnv, Env } from './env';
 import { syncFriends, type FriendRow } from './friends';
@@ -106,6 +106,7 @@ app.post('/api/listing', async c => {
  * Order: shuffled, starting at the user's own point on the ring for today (see src/shuffle.ts).
  * country=TW limits the list to one country (using the country-first index); missing or malformed = all countries
  * active=1 only keeps players seen online in the last 7 days (players who hide their online status are left out)
+ * The country the first pass is still scanning is left out until it's done (see getCountryInFirstScan).
  */
 const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -123,6 +124,7 @@ app.get('/api/candidates', async c => {
     const country = c.req.query('country')?.toUpperCase() ?? '';
     const byCountry = /^[A-Z]{2}$/.test(country);
     const activeOnly = c.req.query('active') === '1';
+    const hiddenCountry = await getCountryInFirstScan(c.env.DB);
     const me = user.osuUserId;
     const now = Date.now();
     const start = ringStart(me, now);
@@ -143,6 +145,10 @@ app.get('/api/candidates', async c => {
         if (activeOnly) {
             filters += ' AND p.last_visit >= ?';
             params.push(now - ACTIVE_WINDOW_MS);
+        }
+        if (hiddenCountry) {
+            filters += ' AND p.country_code != ?';
+            params.push(hiddenCountry);
         }
         params.push(me, start, offset + limit);
         const sql = `SELECT * FROM (

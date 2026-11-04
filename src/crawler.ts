@@ -435,15 +435,32 @@ export async function runCrawler(env: Env): Promise<string> {
     return summary;
 }
 
+/**
+ * The country the first pass is scanning right now, which Find people leaves out until it's done, so a country never
+ * shows up with only the few players its first ranking pages turned up. From the second pass on, every country
+ * already has a full list that rescanning only updates, so nothing is left out.
+ */
+function countryInFirstScan(state: Partial<CrawlerState> | null): string | null {
+    if (!state || state.lastPassScanned != null) return null;
+    return state.countries?.[state.countryIndex ?? 0] ?? null;
+}
+
+export async function getCountryInFirstScan(db: D1Database): Promise<string | null> {
+    return countryInFirstScan(await readKv<Partial<CrawlerState>>(db, STATE_KEY));
+}
+
 export async function getCrawlerProgress(db: D1Database) {
     const [state, stats] = await Promise.all([readKv<Partial<CrawlerState>>(db, STATE_KEY), readKv<CrawlerStats>(db, STATS_KEY)]);
     const countries = state?.countries ?? [];
+    // The country menu and the count leave out the country Find people doesn't show yet
+    const hidden = countryInFirstScan(state);
+    const byCountry = (stats?.byCountry ?? []).filter(c => c.code !== hidden);
     return {
         countriesInPass: countries.length,
         currentCountry: countries[state?.countryIndex ?? 0] ?? null,
         passScanned: state?.passScanned ?? 0,
         lastPassScanned: state?.lastPassScanned ?? null,
-        mentioned: stats?.mentioned ?? null,
-        byCountry: stats?.byCountry ?? [],
+        mentioned: stats ? byCountry.reduce((sum, c) => sum + c.count, 0) : null,
+        byCountry,
     };
 }

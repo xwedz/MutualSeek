@@ -13,7 +13,7 @@ Many players write things like "add me for mutuals" or "I follow back" on their 
 
 ## How it works
 
-**Scanning.** A Cron Trigger runs the scanner once a minute. Each run handles a small batch: it reads a page of a country's performance ranking (top 10,000 per country, osu! standard), then fetches the profiles of the active players on it. A full pass goes through every country, starting with those that have the most active players, and passes are spread out over about a month. If osu! answers `429 Too Many Requests`, the scanner sends nothing for 2 minutes, doubling after each further 429 up to an hour (or longer if osu! asks for it with `Retry-After`).
+**Scanning.** A Cron Trigger runs the scanner once a minute. Each run handles a small batch: it reads a page of a country's performance ranking (top 10,000 per country, osu! standard), then fetches the profiles of the active players on it. A full pass goes through every country, starting with those that have the most active players, and passes are spread out over about a month. During the first pass, a country only appears on Find people once it has been fully scanned, so it never shows up with just the few players found so far. If osu! answers `429 Too Many Requests`, the scanner sends nothing for 2 minutes, doubling after each further 429 up to an hour (or longer if osu! asks for it with `Retry-After`).
 
 **Relay.** Requests from Workers to osu! all arrive from one shared address, and osu!'s web server can rate-limit them together. The scanner can send its requests through a small relay on a machine with its own address instead, and falls back to calling osu! directly when the relay is off (see [relay/README.md](relay/README.md)).
 

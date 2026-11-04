@@ -57,7 +57,7 @@ export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
                 <>
                     <p>
                         The scanner goes country by country, starting with the countries that have the most active players, so smaller
-                        countries come later in each round.
+                        countries come later in each round. A country appears once its first scan is finished.
                     </p>
                     <p>A player also won't appear if they:</p>
                     <ul className="list-disc space-y-1 pl-5">

@@ -1,4 +1,5 @@
 // The candidate list itself: paging, the shuffled order, filters and who is left out (src/index.ts, src/shuffle.ts)
+import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ringStart } from '../src/shuffle';
 import { addFriend, addPlayers, api, DAY, logIn, pageThrough, resetDatabase, type PlayerSeed } from './helpers';
@@ -122,6 +123,43 @@ describe('filters', () => {
         ]);
         expect([...(await pageThrough('&active=1', cookie)).ids].sort()).toEqual([1, 2]);
         expect((await pageThrough('', cookie)).ids).toHaveLength(4);
+    });
+});
+
+describe('a country the first pass is still scanning', () => {
+    /** Scanner state with TW done, KR being scanned and JP not reached yet */
+    async function scanningKorea({ lastPassScanned = null as number | null, countryIndex = 1 } = {}) {
+        const state = { countries: ['TW', 'KR', 'JP'], countryIndex, nextPage: 3, pending: [], lastPassScanned };
+        await env.DB.prepare("INSERT INTO kv (key, value) VALUES ('crawler:state', ?)").bind(JSON.stringify(state)).run();
+    }
+    const players = [...spread(3, { country: 'TW' }), { id: 10, shuffleKey: 11, country: 'KR' }, { id: 11, shuffleKey: 12, country: 'KR' }];
+
+    it('is left out until it has been scanned', async () => {
+        await addPlayers(players);
+        await scanningKorea();
+        expect([...(await pageThrough('', cookie)).ids].sort()).toEqual([1, 2, 3]);
+        expect((await pageThrough('&country=KR', cookie)).ids).toEqual([]);
+    });
+
+    it('shows up once the scanner moves on to the next country', async () => {
+        await addPlayers(players);
+        await scanningKorea({ countryIndex: 2 });
+        expect([...(await pageThrough('&country=KR', cookie)).ids].sort()).toEqual([10, 11]);
+    });
+
+    it('is not left out from the second pass on (it already has a full list)', async () => {
+        await addPlayers(players);
+        await scanningKorea({ lastPassScanned: 150_000 });
+        expect((await pageThrough('', cookie)).ids).toHaveLength(5);
+    });
+
+    it('is left out of the country menu and the count too', async () => {
+        await scanningKorea();
+        const stats = { mentioned: 5, byCountry: [{ code: 'TW', count: 3 }, { code: 'KR', count: 2 }], updatedAt: NOW };
+        await env.DB.prepare("INSERT INTO kv (key, value) VALUES ('crawler:stats', ?)").bind(JSON.stringify(stats)).run();
+        const body = (await (await api('/api/stats')).json()) as { mentioned: number; byCountry: { code: string }[] };
+        expect(body.byCountry.map(c => c.code)).toEqual(['TW']);
+        expect(body.mentioned).toBe(3);
     });
 });
 
