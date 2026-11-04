@@ -1,0 +1,41 @@
+# Runs the type checks and tests on every push to main and on every pull request.
+# Nothing here deploys: deploying stays a manual `npm run deploy`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The jobs only read the code
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request cancels the run still going for the older one
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          # Reuses downloaded packages between runs; the cache is rebuilt when either lockfile changes
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+
+      # npm ci installs exactly what the lockfiles say, and fails if they don't match package.json
+      - run: npm ci
+      - run: npm ci --prefix client
+
+      - run: npm run typecheck
+      # The Worker's tests (Vitest in workerd, local D1, fake osu! API) and the relay's tests. No secrets needed.
+      - run: npm test
