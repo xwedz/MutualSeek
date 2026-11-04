@@ -19,7 +19,7 @@ Everything it answers carries an `x-mutualseek-relay` header. When the scanner g
 
 ## Running it
 
-Requires Node.js 18 or later and [`cloudflared`](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+Requires Node.js 20.6 or later (for `--env-file`) and [`cloudflared`](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
 
 1. Create `relay/.env` (gitignored) with a long random secret:
    ```sh

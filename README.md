@@ -13,7 +13,7 @@ Many players write things like "add me for mutuals" or "I follow back" on their 
 
 ## How it works
 
-**Scanning.** A Cron Trigger runs the scanner once a minute. Each run handles a small batch: it reads a page of a country's performance ranking (top 10,000 per country, osu! standard), then fetches the profiles of the active players on it. A full pass goes through every country, starting with those that have the most active players, and passes are spread out over about a month.
+**Scanning.** A Cron Trigger runs the scanner once a minute. Each run handles a small batch: it reads a page of a country's performance ranking (top 10,000 per country, osu! standard), then fetches the profiles of the active players on it. A full pass goes through every country, starting with those that have the most active players, and passes are spread out over about a month. If osu! answers `429 Too Many Requests`, the scanner sends nothing for 2 minutes, doubling after each further 429 up to an hour (or longer if osu! asks for it with `Retry-After`).
 
 **Relay.** Requests from Workers to osu! all arrive from one shared address, and osu!'s web server can rate-limit them together. The scanner can send its requests through a small relay on a machine with its own address instead, and falls back to calling osu! directly when the relay is off (see [relay/README.md](relay/README.md)).
 
@@ -32,7 +32,7 @@ Many players write things like "add me for mutuals" or "I follow back" on their 
 - **Backend**: Cloudflare Workers, [Hono](https://hono.dev), Cloudflare D1 (SQLite), Cron Triggers, Workers Rate Limiting
 - **Frontend**: React, Vite, Tailwind CSS v4
 - **Language**: TypeScript
-- **Tests**: Vitest
+- **Tests**: Vitest, Node.js test runner (relay)
 
 ## Project structure
 
@@ -47,6 +47,7 @@ src/                 Worker (API, OAuth, scanner)
 relay/               optional relay for the scanner's osu! requests (Node.js)
 client/              React frontend (served as static assets)
 migrations/          D1 schema migrations
+test/                API and scanner tests, fake osu! API
 wrangler.jsonc       Worker configuration
 ```
 
@@ -75,24 +76,26 @@ Run the checks with `npm test` and `npm run typecheck`.
 
 ## Tests
 
-Tests run inside the Workers runtime with [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/), each test file against its own fresh local D1 database built from `migrations/`. They never touch the production database or the osu! API, and don't need `.dev.vars`.
+The Worker's tests run inside the Workers runtime with [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/), each test file against its own fresh local D1 database built from `migrations/`. They never touch the production database or the osu! API, and don't need `.dev.vars`.
 
-- `src/**/*.test.ts`: unit tests (mutual-mention detection, ranking page handling, the shuffle start point).
+- `src/**/*.test.ts`: unit tests (mutual-mention detection, ranking page handling, the shuffle start point, reading osu!'s rate limit headers).
 - `test/**/*.test.ts`: API tests that send real requests to the Worker: who can see the list (login and guidelines), paging, the shuffled order, filters, hiding friends, and Don't list me.
-- `test/crawler.test.ts`: the scanner against a fake osu! API (`test/fake-osu.ts`): at most 9 requests per run one second apart, the 30-day gap between passes, what gets stored or removed, skipping players who never had supporter, and how API errors are handled.
+- `test/crawler.test.ts`: the scanner against a fake osu! API (`test/fake-osu.ts`): at most 9 requests per run one second apart, the 30-day gap between passes, what gets stored or removed, skipping players who never had supporter, how API errors are handled, the wait after a 429, and using the relay (and falling back when it doesn't answer).
+- `relay/relay.test.mjs`: the relay with Node's test runner, against a fake osu! server: the secret, which paths are allowed, forwarding, and the per-minute limit.
 
 ## Deploying
 
 1. Create the database with `npx wrangler d1 create osu-mutual-tool`, put its id in `wrangler.jsonc`, and run `npm run db:migrate:remote`.
-2. Create a separate osu! OAuth application for production, with the callback URL `https://<your-domain>/api/auth/callback`.
-3. Set the secrets (use new values, not the ones from `.dev.vars`):
+2. In `wrangler.jsonc`, change `routes` to your own domain (or remove it and set `workers_dev` to `true`), and set `OSU_RELAY_URL` to `""` unless you run your own relay.
+3. Create a separate osu! OAuth application for production, with the callback URL `https://<your-domain>/api/auth/callback`.
+4. Set the secrets (use new values, not the ones from `.dev.vars`):
    ```sh
    npx wrangler secret put OSU_CLIENT_ID
    npx wrangler secret put OSU_CLIENT_SECRET
    npx wrangler secret put SESSION_SECRET
    npx wrangler secret put TOKEN_ENCRYPTION_KEY
    ```
-4. `npm run deploy`
+5. `npm run deploy`
 
 Scanning can be paused without losing progress by setting `SCAN_PAUSE` in `wrangler.jsonc` (`"now"`, or a country code to stop after that country) and deploying again.
 
