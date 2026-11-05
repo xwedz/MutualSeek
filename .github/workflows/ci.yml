@@ -1,5 +1,6 @@
-# Runs the type checks and tests on every push to main and on every pull request.
-# Nothing here deploys: deploying stays a manual `npm run deploy`.
+# Runs the type checks and tests on every push to main and on every pull request,
+# and deploys to Cloudflare after a push to main once they pass.
+# Database migrations are not run here: apply them by hand (npm run db:migrate:remote) before pushing code that needs them.
 name: CI
 
 on:
@@ -11,15 +12,14 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same branch or pull request cancels the run still going for the older one
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # A newer push to the same branch or pull request cancels the tests still running for the older one
+    concurrency:
+      group: test-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
 
@@ -39,3 +39,33 @@ jobs:
       - run: npm run typecheck
       # The Worker's tests (Vitest in workerd, local D1, fake osu! API) and the relay's tests. No secrets needed.
       - run: npm test
+
+  deploy:
+    # Only after the tests pass, and only for pushes to main (never for pull requests, which can't see the secrets anyway)
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One deploy at a time, and a deploy that has started is never cancelled halfway; a newer push waits its turn
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+
+      - run: npm ci
+      - run: npm ci --prefix client
+
+      # The same script as deploying by hand: builds the frontend, then runs wrangler deploy
+      - run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

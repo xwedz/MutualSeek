@@ -97,6 +97,8 @@ The Worker's tests run inside the Workers runtime with [`@cloudflare/vitest-plug
    ```
 5. `npm run deploy`
 
+After that, pushes to `main` deploy automatically once the tests pass ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). This needs two repository secrets: `CLOUDFLARE_API_TOKEN` (an account API token from the **Edit Cloudflare Workers** template) and `CLOUDFLARE_ACCOUNT_ID`. Database migrations still have to be applied by hand before pushing code that needs them.
+
 Scanning can be paused without losing progress by setting `SCAN_PAUSE` in `wrangler.jsonc` (`"now"`, or a country code to stop after that country) and deploying again.
 
 ## License
