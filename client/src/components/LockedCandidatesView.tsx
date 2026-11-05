@@ -1,7 +1,6 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import { fetchPreview } from '../api';
 import { countryName } from '../countries';
-import { formatNumber } from '../format';
 import type { PreviewPlayer } from '../types';
 import { ActiveToggle } from './ActiveToggle';
 import { Excerpt } from './CandidateCard';
@@ -13,7 +12,6 @@ import { ListingButton } from './ListingButton';
 import { SkeletonCards } from './SkeletonCards';
 
 interface Props {
-    listed: number | null; // players on the list, from /api/stats
     optedOut: boolean;
     onSetListing: (listed: boolean) => Promise<void>;
     onWhyLogIn: () => void; // opens the FAQ's "Why do I need to log in?"
@@ -28,7 +26,7 @@ const CONTROL = 'inline-flex items-center gap-2 rounded-xl border border-line bg
  * collected anonymously, but a few real excerpts are shown without names so people can see what the site finds before
  * deciding to log in. The controls look the same but open a login dialog.
  */
-export function LockedCandidatesView({ listed, optedOut, onSetListing, onWhyLogIn }: Props) {
+export function LockedCandidatesView({ optedOut, onSetListing, onWhyLogIn }: Props) {
     const [asking, setAsking] = useState(false);
     const ask = () => setAsking(true);
     // null while loading; if the preview can't be loaded (or is empty), placeholder cards stay instead
@@ -70,8 +68,7 @@ export function LockedCandidatesView({ listed, optedOut, onSetListing, onWhyLogI
                 <div>
                     <p className="font-semibold">Log in to see who they are</p>
                     <p className="mt-1 text-sm text-muted">
-                        These are real excerpts from players' profiles. Log in with osu! to see who wrote them
-                        {listed ? ` and browse all ${formatNumber(listed)} players` : ' and browse the whole list'}.
+                        These are real excerpts from players' profiles. Log in with osu! to see who wrote them and browse all players.
                     </p>
                 </div>
                 {/* Two choices side by side, so logging in doesn't look like the only thing you can do */}
