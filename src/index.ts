@@ -11,7 +11,7 @@ import type { Snippet } from './detect';
 import type { AppEnv, Env } from './env';
 import { syncFriends, type FriendRow } from './friends';
 import { endSession, getSessionUser, type SessionUser } from './session';
-import { ringStart } from './shuffle';
+import { ringStart, SHUFFLE_RANGE } from './shuffle';
 
 const app = new Hono<AppEnv>();
 
@@ -179,6 +179,46 @@ app.get('/api/candidates', async c => {
         snippets: parseSnippets(mutual_snippet),
     }));
     return c.json({ candidates, hasMore: results.length > PAGE_SIZE });
+});
+
+/**
+ * Find people before logging in: a few real excerpts, so visitors can see what the site finds before deciding to log
+ * in. Only each player's country and first excerpt are sent; who they are (name, avatar, profile link) and the full
+ * list stay behind the login. Each request starts at a random point on the shuffle ring, so the preview isn't always
+ * the same few players.
+ */
+const PREVIEW_SIZE = 5;
+
+app.get('/api/preview', async c => {
+    const hiddenCountry = await getCountryInFirstScan(c.env.DB);
+    const start = Math.floor(Math.random() * SHUFFLE_RANGE);
+    // Read like /api/candidates: from the start point to the end of the ring, then wrap around to the beginning
+    function half(part: 0 | 1, comparison: '>=' | '<') {
+        const params: (string | number)[] = [];
+        let filters = '';
+        if (hiddenCountry) {
+            filters += ' AND country_code != ?';
+            params.push(hiddenCountry);
+        }
+        params.push(start, PREVIEW_SIZE);
+        const sql = `SELECT * FROM (
+                SELECT country_code, mutual_snippet, shuffle_key, ${part} AS part
+                FROM players
+                WHERE mutual_level = 'mention'${filters} AND shuffle_key ${comparison} ?
+                ORDER BY shuffle_key
+                LIMIT ?)`;
+        return { sql, params };
+    }
+    const first = half(0, '>=');
+    const second = half(1, '<');
+    const { results } = await c.env.DB.prepare(`${first.sql} UNION ALL ${second.sql} ORDER BY part, shuffle_key LIMIT ?`)
+        .bind(...first.params, ...second.params, PREVIEW_SIZE)
+        .all<{ country_code: string | null; mutual_snippet: string | null }>();
+
+    const players = results
+        .map(row => ({ country_code: row.country_code, snippet: parseSnippets(row.mutual_snippet)[0] }))
+        .filter(p => p.snippet !== undefined);
+    return c.json({ players });
 });
 
 /** Excerpts are stored as JSON; anything else (e.g. plain text from an older version) becomes one unmarked snippet. */

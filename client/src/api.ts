@@ -1,6 +1,6 @@
 // Every call to the backend lives here; components never call fetch directly.
 
-import type { CandidatesResponse, FriendsResponse, MeResponse, StatsResponse } from './types';
+import type { CandidatesResponse, FriendsResponse, MeResponse, PreviewPlayer, StatsResponse } from './types';
 
 export class ApiError extends Error {
     constructor(message: string, public status: number, public relogin = false) {
@@ -18,6 +18,8 @@ async function parse<T>(res: Response): Promise<T> {
 }
 
 export const fetchMe = () => fetch('/api/me').then(res => parse<MeResponse>(res));
+
+export const fetchPreview = () => fetch('/api/preview').then(res => parse<{ players: PreviewPlayer[] }>(res));
 
 export const logout = () => fetch('/api/auth/logout', { method: 'POST' }).then(res => parse<{ ok: true }>(res));
 

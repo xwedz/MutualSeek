@@ -1,7 +1,7 @@
 import { profileUrl } from '../api';
 import { countryName } from '../countries';
 import { formatNumber, timeAgo } from '../format';
-import type { Candidate } from '../types';
+import type { Candidate, SnippetPart } from '../types';
 import { Avatar } from './Avatar';
 import { CheckIcon, CopyIcon, ExternalIcon, LockIcon, SkipIcon } from './Icons';
 
@@ -57,20 +57,7 @@ export function CandidateCard({ candidate: c, index, leaving, copied, showCountr
 
             {/* The part of their profile that mentions mutuals, keywords in pink, so users can read what they wrote right on the card */}
             {c.snippets.map((snippet, i) => (
-                <blockquote
-                    key={i}
-                    className="mt-3 rounded-xl border-l-2 border-pink/50 bg-surface-2/60 px-3 py-2 text-sm break-words text-ink/85"
-                >
-                    {snippet.map((part, j) =>
-                        part.hit ? (
-                            <mark key={j} className="rounded bg-pink/15 px-0.5 font-semibold text-pink">
-                                {part.text}
-                            </mark>
-                        ) : (
-                            <span key={j}>{part.text}</span>
-                        ),
-                    )}
-                </blockquote>
+                <Excerpt key={i} snippet={snippet} />
             ))}
 
             <div className="mt-3 flex flex-wrap gap-2">
@@ -119,5 +106,22 @@ export function CandidateCard({ candidate: c, index, leaving, copied, showCountr
                 </button>
             </div>
         </li>
+    );
+}
+
+/** One excerpt from a player's profile, matched keywords in pink (also used by the logged-out preview) */
+export function Excerpt({ snippet }: { snippet: SnippetPart[] }) {
+    return (
+        <blockquote className="mt-3 rounded-xl border-l-2 border-pink/50 bg-surface-2/60 px-3 py-2 text-sm break-words text-ink/85">
+            {snippet.map((part, j) =>
+                part.hit ? (
+                    <mark key={j} className="rounded bg-pink/15 px-0.5 font-semibold text-pink">
+                        {part.text}
+                    </mark>
+                ) : (
+                    <span key={j}>{part.text}</span>
+                ),
+            )}
+        </blockquote>
     );
 }

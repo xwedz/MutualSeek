@@ -44,6 +44,12 @@ export interface CandidatesResponse {
     hasMore: boolean;
 }
 
+/** Find people before logging in: a player's country and one excerpt, without who they are (see /api/preview) */
+export interface PreviewPlayer {
+    country_code: string | null;
+    snippet: SnippetPart[];
+}
+
 
 export interface Friend {
     target_id: number;

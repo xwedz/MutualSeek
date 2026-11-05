@@ -23,7 +23,9 @@ export function FaqView({ loggedIn, optedOut, onSetListing }: Props) {
             a: (
                 <>
                     <p>
-                        The list is only shown to logged-in osu! players, so it can't be browsed or collected anonymously.
+                        Before you log in, Find people shows a few excerpts without names, so you can see what the site finds. Who
+                        wrote them, and the full list, are only shown to logged-in osu! players, so the list can't be browsed or
+                        collected anonymously.
                     </p>
                     <p>
                         Logging in only lets the site see who you are and read your friend list. It can't add friends or send messages for you,

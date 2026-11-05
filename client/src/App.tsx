@@ -226,7 +226,12 @@ export default function App() {
                                 onAcceptGuidelines={handleAcceptGuidelines}
                             />
                         ) : (
-                            <LockedCandidatesView optedOut={false} onSetListing={updateListing} onWhyLogIn={() => goToFaq(`#${WHY_LOG_IN}`)} />
+                            <LockedCandidatesView
+                                listed={stats?.mentioned ?? null}
+                                optedOut={false}
+                                onSetListing={updateListing}
+                                onWhyLogIn={() => goToFaq(`#${WHY_LOG_IN}`)}
+                            />
                         )}
                     </div>
                 )}

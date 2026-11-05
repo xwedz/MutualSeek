@@ -6,7 +6,7 @@ Many players write things like "add me for mutuals" or "I follow back" on their 
 
 ## Features
 
-- **Find people**: players whose profile mentions mutuals, with the matching part of their profile highlighted. Filter by country or by who was online in the past week, and copy a message template to send on osu!. The list is shuffled so the same few players aren't contacted by everyone (see below). The list is only shown after logging in and accepting a few short guidelines (read what they wrote, don't take it personally, be kind).
+- **Find people**: players whose profile mentions mutuals, with the matching part of their profile highlighted. Filter by country or by who was online in the past week, and copy a message template to send on osu!. The list is shuffled so the same few players aren't contacted by everyone (see below). Before logging in, a few excerpts are shown without names; who wrote them, and the full list, are only shown after logging in and accepting a few short guidelines (read what they wrote, don't take it personally, be kind).
 - **Follow-backs**: log in with osu! to see who added you back, who removed you, and who never did, by comparing your friend list between syncs.
 - **Don't list me**: any listed player can log in and remove themselves from the list. Future scans won't add them back.
 - **Read-only**: the site only asks for `identify` and `friends.read`. It can't add friends or send messages for you.
@@ -79,7 +79,7 @@ Run the checks with `npm test` and `npm run typecheck`.
 The Worker's tests run inside the Workers runtime with [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/), each test file against its own fresh local D1 database built from `migrations/`. They never touch the production database or the osu! API, and don't need `.dev.vars`.
 
 - `src/**/*.test.ts`: unit tests (mutual-mention detection, ranking page handling, the shuffle start point, reading osu!'s rate limit headers).
-- `test/**/*.test.ts`: API tests that send real requests to the Worker: who can see the list (login and guidelines), paging, the shuffled order, filters, hiding friends, and Don't list me.
+- `test/**/*.test.ts`: API tests that send real requests to the Worker: who can see the list (login and guidelines), the preview before logging in (excerpts only, no names), paging, the shuffled order, filters, hiding friends, and Don't list me.
 - `test/crawler.test.ts`: the scanner against a fake osu! API (`test/fake-osu.ts`): at most 9 requests per run one second apart, the 30-day gap between passes, what gets stored or removed, skipping players who never had supporter, how API errors are handled, the wait after a 429, and using the relay (and falling back when it doesn't answer).
 - `relay/relay.test.mjs`: the relay with Node's test runner, against a fake osu! server: the secret, which paths are allowed, forwarding, and the per-minute limit.
 

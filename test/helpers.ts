@@ -57,6 +57,7 @@ export interface PlayerSeed {
     shuffleKey: number;
     country?: string;
     lastVisit?: number | null;
+    snippets?: { text: string; hit: boolean }[][];
 }
 
 /** Inserts listed players (players who mention mutuals) with chosen shuffle keys, so the expected order is known */
@@ -65,8 +66,16 @@ export async function addPlayers(players: PlayerSeed[]) {
         players.map(p =>
             env.DB.prepare(
                 `INSERT INTO players (id, username, country_code, last_visit, pm_friends_only, scanned_at, mutual_level, mutual_score, mutual_snippet, shuffle_key)
-                 VALUES (?1, ?2, ?3, ?4, 0, ?5, 'mention', 1, '[]', ?6)`,
-            ).bind(p.id, `player${p.id}`, p.country ?? 'TW', p.lastVisit === undefined ? Date.now() : p.lastVisit, Date.now(), p.shuffleKey),
+                 VALUES (?1, ?2, ?3, ?4, 0, ?5, 'mention', 1, ?7, ?6)`,
+            ).bind(
+                p.id,
+                `player${p.id}`,
+                p.country ?? 'TW',
+                p.lastVisit === undefined ? Date.now() : p.lastVisit,
+                Date.now(),
+                p.shuffleKey,
+                JSON.stringify(p.snippets ?? []),
+            ),
         ),
     );
 }
